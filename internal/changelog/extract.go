@@ -43,7 +43,9 @@ func ExtractHighlights(md string) pkg.Highlights {
 
 		switch current {
 		case sectionBreaking:
-			h.Breaking = append(h.Breaking, item)
+			if len(h.Breaking) < 20 {
+				h.Breaking = append(h.Breaking, item)
+			}
 		case sectionFeature:
 			if len(h.Features) < 10 {
 				h.Features = append(h.Features, item)
@@ -53,7 +55,9 @@ func ExtractHighlights(md string) pkg.Highlights {
 				h.Fixes = append(h.Fixes, item)
 			}
 		case sectionMigration:
-			h.Migration = append(h.Migration, item)
+			if len(h.Migration) < 10 {
+				h.Migration = append(h.Migration, item)
+			}
 		}
 	}
 

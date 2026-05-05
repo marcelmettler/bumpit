@@ -7,12 +7,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/marcelmettler/bumpit/internal/detect"
 	"github.com/marcelmettler/bumpit/internal/pkg"
 )
+
+// validPackageName matches npm package names: optional @scope/name or plain name.
+var validPackageName = regexp.MustCompile(`^(@[a-z0-9_\-\.]+/)?[a-z0-9_\-\.]+$`)
 
 // outdatedEntry is the JSON structure returned by `pnpm outdated --json`.
 type outdatedEntry struct {
@@ -83,6 +87,11 @@ func Outdated(dir, root string) ([]*pkg.PackageUpdate, error) {
 func RunUpdate(dir string, packages []string) (string, error) {
 	if len(packages) == 0 {
 		return "", nil
+	}
+	for _, name := range packages {
+		if !validPackageName.MatchString(name) {
+			return "", fmt.Errorf("refusing to update: invalid package name %q", name)
+		}
 	}
 	args := append([]string{"update", "--latest"}, packages...)
 	cmd := exec.Command("pnpm", args...)

@@ -3,6 +3,7 @@ package changelog
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -58,7 +59,7 @@ func FetchGitHubChangelog(owner, repo, fromVersion, toVersion string) (markdown 
 	}
 
 	var releases []githubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 20<<20)).Decode(&releases); err != nil {
 		return "", 0, false, fmt.Errorf("decode releases: %w", err)
 	}
 

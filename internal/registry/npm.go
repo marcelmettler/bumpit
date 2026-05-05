@@ -3,6 +3,7 @@ package registry
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -54,7 +55,7 @@ func FetchPackageInfo(name, version string) (*PackageInfo, error) {
 	}
 
 	var data npmResponse
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 10<<20)).Decode(&data); err != nil {
 		return nil, fmt.Errorf("decode npm response for %s: %w", name, err)
 	}
 
