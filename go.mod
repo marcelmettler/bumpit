@@ -1,4 +1,4 @@
-module github.com/maece/bumpit
+module github.com/marcelmettler/bumpit
 
 go 1.22.0
 

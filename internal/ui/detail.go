@@ -6,16 +6,17 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/glamour"
-	"github.com/maece/bumpit/internal/pkg"
+	"github.com/marcelmettler/bumpit/internal/pkg"
 )
 
 // renderDetail renders the detail view for a single package.
 //
 // Layout:
-//   fixed  │ blank + name/version line + meta line  (headerLineCount lines)
-//   scroll │ banners + highlights + changelog        (pageSize lines)
-//   fixed  │ scroll indicator                        (1 line)
-//   fixed  │ status bar                              (1 line)
+//
+//	fixed  │ blank + name/version line + meta line  (headerLineCount lines)
+//	scroll │ banners + highlights + changelog        (pageSize lines)
+//	fixed  │ scroll indicator                        (1 line)
+//	fixed  │ status bar                              (1 line)
 func renderDetail(m *Model) string {
 	if m.detailPackage == nil {
 		return "No package selected."

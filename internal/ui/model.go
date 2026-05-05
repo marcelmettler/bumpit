@@ -7,12 +7,12 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/maece/bumpit/internal/changelog"
-	"github.com/maece/bumpit/internal/detect"
-	"github.com/maece/bumpit/internal/pkg"
-	"github.com/maece/bumpit/internal/pkg/gomod"
-	"github.com/maece/bumpit/internal/pkg/pnpm"
-	"github.com/maece/bumpit/internal/registry"
+	"github.com/marcelmettler/bumpit/internal/changelog"
+	"github.com/marcelmettler/bumpit/internal/detect"
+	"github.com/marcelmettler/bumpit/internal/pkg"
+	"github.com/marcelmettler/bumpit/internal/pkg/gomod"
+	"github.com/marcelmettler/bumpit/internal/pkg/pnpm"
+	"github.com/marcelmettler/bumpit/internal/registry"
 )
 
 // appState tracks the current TUI state machine state.
@@ -86,11 +86,11 @@ type msgUpdateDone struct {
 
 // Model is the bubbletea model for the entire application.
 type Model struct {
-	state   appState
-	root    string
-	width   int
-	height  int
-	err     error
+	state  appState
+	root   string
+	width  int
+	height int
+	err    error
 
 	// Data
 	files    []detect.PackageFile

@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/maece/bumpit/internal/detect"
-	"github.com/maece/bumpit/internal/pkg"
+	"github.com/marcelmettler/bumpit/internal/detect"
+	"github.com/marcelmettler/bumpit/internal/pkg"
 )
 
 // outdatedEntry is the JSON structure returned by `pnpm outdated --json`.

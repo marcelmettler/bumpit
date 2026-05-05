@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/maece/bumpit/internal/auth"
+	"github.com/marcelmettler/bumpit/internal/auth"
 )
 
 const githubAPIBase = "https://api.github.com"

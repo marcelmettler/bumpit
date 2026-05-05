@@ -1,21 +1,19 @@
 {
-  "name": "updater",
+  "name": "bumpit",
   "image": "mcr.microsoft.com/devcontainers/go:1.22",
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
-      "version": "lts"
+      "version": "lts",
     },
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {},
   },
   "postCreateCommand": "corepack enable && corepack prepare pnpm@latest --activate && go mod download",
   "customizations": {
     "vscode": {
-      "extensions": [
-        "golang.go"
-      ],
+      "extensions": ["golang.go"],
       "settings": {
-        "go.toolsManagement.autoUpdate": true
-      }
-    }
-  }
+        "go.toolsManagement.autoUpdate": true,
+      },
+    },
+  },
 }

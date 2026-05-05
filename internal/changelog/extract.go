@@ -5,17 +5,17 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/maece/bumpit/internal/pkg"
+	"github.com/marcelmettler/bumpit/internal/pkg"
 )
 
 type sectionKind int
 
 const (
-	sectionUnknown  sectionKind = iota
-	sectionBreaking             // "Breaking Changes", "⚠️ Breaking", "Incompatible"
-	sectionFeature              // "Features", "Added", "New", "Enhancements"
-	sectionFix                  // "Bug Fixes", "Fixed", "Patch"
-	sectionMigration            // "Migration Guide", "Upgrade", "How to upgrade"
+	sectionUnknown   sectionKind = iota
+	sectionBreaking              // "Breaking Changes", "⚠️ Breaking", "Incompatible"
+	sectionFeature               // "Features", "Added", "New", "Enhancements"
+	sectionFix                   // "Bug Fixes", "Fixed", "Patch"
+	sectionMigration             // "Migration Guide", "Upgrade", "How to upgrade"
 )
 
 // ExtractHighlights parses markdown changelog text into structured highlights.

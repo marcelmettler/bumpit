@@ -1,8 +1,8 @@
 package changelog
 
 import (
-	"github.com/maece/bumpit/internal/pkg"
-	"github.com/maece/bumpit/internal/registry"
+	"github.com/marcelmettler/bumpit/internal/pkg"
+	"github.com/marcelmettler/bumpit/internal/registry"
 )
 
 // Result holds the result of a changelog fetch operation.

@@ -41,7 +41,7 @@ Instead of running `pnpm outdated`, opening ten GitHub changelog pages, and gues
 
 ## Installation
 
-**Download a pre-built binary** from the [releases page](https://github.com/maece/bumpit/releases/latest):
+**Download a pre-built binary** from the [releases page](https://github.com/marcelmettler/bumpit/releases/latest):
 
 | Platform | File |
 |----------|------|
@@ -59,13 +59,13 @@ mv bumpit /usr/local/bin/
 **Or install with Go:**
 
 ```bash
-go install github.com/maece/bumpit@latest
+go install github.com/marcelmettler/bumpit@latest
 ```
 
 **Or build from source:**
 
 ```bash
-git clone https://github.com/maece/bumpit
+git clone https://github.com/marcelmettler/bumpit
 cd bumpit
 go build -o bumpit .
 ```
@@ -171,7 +171,7 @@ Packages published less than 3 days ago will show `⏳ Nd left` instead of a sta
 Bug reports and pull requests are welcome. For significant changes, open an issue first to discuss the approach.
 
 ```bash
-git clone https://github.com/maece/bumpit
+git clone https://github.com/marcelmettler/bumpit
 cd bumpit
 go build -o bumpit .
 go test ./...

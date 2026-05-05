@@ -7,8 +7,8 @@ import (
 	"os/exec"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/maece/bumpit/internal/detect"
-	"github.com/maece/bumpit/internal/pkg"
+	"github.com/marcelmettler/bumpit/internal/detect"
+	"github.com/marcelmettler/bumpit/internal/pkg"
 )
 
 // listModule represents one entry from `go list -m -u -json all`.
