@@ -1,0 +1,18 @@
+# Compiled binary
+bumpit
+
+# Go build cache
+*.test
+*.out
+
+# macOS
+.DS_Store
+
+# Editor directories
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Debug log (set BUMPIT_DEBUG=1 to enable)
+/tmp/bumpit-debug.log
