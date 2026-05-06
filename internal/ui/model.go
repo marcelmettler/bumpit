@@ -84,6 +84,11 @@ type msgUpdateDone struct {
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
+// Config holds startup options passed from the CLI.
+type Config struct {
+	ShowIndirect bool // include indirect Go module dependencies
+}
+
 // Model is the bubbletea model for the entire application.
 type Model struct {
 	state  appState
@@ -91,6 +96,9 @@ type Model struct {
 	width  int
 	height int
 	err    error
+
+	// Config
+	showIndirect bool
 
 	// Data
 	files    []detect.PackageFile
@@ -124,10 +132,11 @@ type Model struct {
 }
 
 // New creates a new Model for the given root directory.
-func New(root string) *Model {
+func New(root string, cfg Config) *Model {
 	initDebug()
 	return &Model{
 		root:                  root,
+		showIndirect:          cfg.ShowIndirect,
 		state:                 stateInit,
 		minimumReleaseAge:     3 * 24 * time.Hour,
 		changelogFetchedNames: make(map[string]bool),
@@ -529,6 +538,9 @@ func (m *Model) rebuildFiltered() {
 	q := strings.ToLower(m.filterQuery)
 	var filtered []*pkg.PackageUpdate
 	for _, p := range m.packages {
+		if !m.showIndirect && p.DepType == pkg.DepIndirect {
+			continue
+		}
 		if q == "" || strings.Contains(strings.ToLower(p.Name), q) || strings.Contains(strings.ToLower(p.DirName), q) {
 			filtered = append(filtered, p)
 		}

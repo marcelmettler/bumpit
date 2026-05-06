@@ -8,7 +8,7 @@ import (
 )
 
 func newDetailModel() *Model {
-	m := New(".")
+	m := New(".", Config{})
 	m.state = stateDetail
 	m.width = 120
 	m.height = 40
