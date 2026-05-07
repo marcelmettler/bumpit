@@ -12,23 +12,19 @@ import (
 
 func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
+	flag.BoolVar(showVersion, "v", false, "print version and exit")
 	showIndirect := flag.Bool("show-indirect", false, "include indirect Go module dependencies")
 
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "bumpit — interactive dependency updater")
-	fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Interactive dependency updater")
+		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Usage:")
 		fmt.Fprintln(os.Stderr, "  bumpit [flags] [directory]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
-		flag.PrintDefaults()
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Key bindings (list view):")
-		fmt.Fprintln(os.Stderr, "  j/k     navigate    space  toggle selection")
-		fmt.Fprintln(os.Stderr, "  enter   changelog   u      update selected")
-		fmt.Fprintln(os.Stderr, "  /       filter      s      cycle sort")
-		fmt.Fprintln(os.Stderr, "  a       select all  ?      help overlay")
-		fmt.Fprintln(os.Stderr, "  q       quit")
+		fmt.Fprintln(os.Stderr, "  -h, --help            help for bumpit")
+		fmt.Fprintln(os.Stderr, "      --show-indirect   include indirect Go module dependencies")
+		fmt.Fprintln(os.Stderr, "  -v, --version         print version and exit")
 	}
 	flag.Parse()
 
