@@ -31,6 +31,7 @@ bumpit clean [directory]     # find and delete generated artifact directories
 bumpit css [directory]       # two-way CSS audit: unused selectors and missing definitions
 bumpit todo [directory]      # list all TODO, FIXME, HACK, and XXX comments
 bumpit i18n [directory]      # two-way translation key audit: unused keys and undefined references
+bumpit env [directory]       # two-way .env.example audit: unused vars and undefined references
 ```
 
 All commands default to the current directory. Run `bumpit --help` for a full flag listing.
@@ -138,6 +139,32 @@ The `~` direction surfaces dead translations you can safely delete. The `?` dire
 
 Read-only.
 
+### `bumpit env`
+
+**Two-way .env.example audit.** Checks for drift between your `.env.example` files and source code in both directions:
+
+| Indicator | Meaning |
+|-----------|---------|
+| `~` (orange) | Variable defined in a `.env.example` file but never referenced in any source file |
+| `?` (red) | Variable referenced in source but absent from every `.env.example` file |
+
+The `~` direction surfaces stale env vars you can safely remove. The `?` direction catches variables used in code that have no corresponding `.env.example` entry — potential configuration gaps.
+
+**Env file discovery.** Scans `.env.example`, `.env.sample`, `.env.template`, `.env.defaults`, and `.env.schema` files across the project. Lines starting with `#` are treated as comments; `export KEY=value` syntax is also supported.
+
+**Source reference detection.** Matches environment variable access patterns across multiple ecosystems:
+- Node.js: `process.env.KEY`, `process.env['KEY']`
+- Vite / Astro: `import.meta.env.KEY`, `import.meta.env['KEY']`
+- Go: `os.Getenv("KEY")`
+- Python: `os.environ["KEY"]`, `os.environ.get("KEY")`
+- YAML / shell: `${KEY}` substitution (docker-compose, kubernetes manifests, shell scripts)
+
+**Limitations:**
+- Shell bare `$KEY` references (without `{}`) are not detected — too noisy (`$HOME`, `$PATH`, etc. would produce false positives)
+- Dynamic key construction (`process.env[varName]`) cannot be statically resolved
+
+Read-only — `bumpit env` reports findings but does not modify any files.
+
 ## Installation
 
 **Download a pre-built binary** from the [releases page](https://github.com/marcelmettler/bumpit/releases/latest):
@@ -225,6 +252,13 @@ bumpit i18n
 bumpit i18n /path/to/project
 ```
 
+### `bumpit env`
+
+```bash
+bumpit env
+bumpit env /path/to/project
+```
+
 ### GitHub authentication
 
 Changelogs are fetched from the GitHub API. Unauthenticated requests are limited to 60 per hour. `bumpit` automatically resolves credentials from your existing machine state — no setup required if you already use the GitHub CLI or have git configured with HTTPS:
@@ -306,6 +340,13 @@ Packages published less than 3 days ago will show `⏳ Nd left` instead of a sta
 2. **Source scan** — walks `.js`/`.ts`/`.jsx`/`.tsx`/`.vue`/`.svelte`/`.html` files line by line; applies two patterns: `\$t|i18n\.t|translate` (explicit) and `[^a-zA-Z_$\d]t\s*\(` (bare `t()`) for broad coverage
 3. **Diff both ways** — `~` = defined in locale but not in source refs; `?` = in source refs but absent from all locale files
 4. **Display** — combined scrollable list (unused first, then undefined); `/` filters by key or file
+
+### `bumpit env`
+
+1. **Env file scan** — walks all `.env.example`, `.env.sample`, `.env.template`, `.env.defaults`, and `.env.schema` files; parses each line with `^(?:export\s+)?KEY=` regex; skips comments and blank lines
+2. **Source scan** — walks `.js`/`.ts`/`.go`/`.py`/`.sh`/`.yaml` and related files; applies patterns for `process.env.KEY`, `import.meta.env.KEY`, `os.Getenv("KEY")`, `os.environ["KEY"]`, and `${KEY}` YAML substitution
+3. **Diff both ways** — `~` = declared in `.env.example` but no matching access in source; `?` = accessed in source but absent from all env files
+4. **Display** — combined scrollable list (unused first, then undefined); `/` filters by variable name or file
 
 ## Status indicators
 

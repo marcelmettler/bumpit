@@ -31,6 +31,8 @@ func main() {
 		runTodo(os.Args[2:])
 	case "i18n":
 		runI18n(os.Args[2:])
+	case "env":
+		runEnv(os.Args[2:])
 	case "-v", "--version", "version":
 		fmt.Println("bumpit", buildVersion())
 	case "-h", "--help", "help":
@@ -87,6 +89,23 @@ func runLicense(args []string) {
 	}
 	_ = fs.Parse(args)
 	runTUI(ui.New(rootDir(fs.Args()), ui.Config{LicenseMode: true}))
+}
+
+func runEnv(args []string) {
+	fs := flag.NewFlagSet("env", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Audit environment variables: find unused .env.example vars and undefined source references")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage:")
+		fmt.Fprintln(os.Stderr, "  bumpit env [directory]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Expects .env.example, .env.sample, .env.template, .env.defaults, or .env.schema files.")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fmt.Fprintln(os.Stderr, "  -h, --help   help for env")
+	}
+	_ = fs.Parse(args)
+	runTUI(ui.New(rootDir(fs.Args()), ui.Config{EnvMode: true}))
 }
 
 func runI18n(args []string) {
@@ -185,6 +204,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  css        Find CSS class selectors never referenced in templates")
 	fmt.Fprintln(os.Stderr, "  todo       Scan for TODO, FIXME, HACK, and XXX comments")
 	fmt.Fprintln(os.Stderr, "  i18n       Audit translation keys: unused locale keys and undefined references")
+	fmt.Fprintln(os.Stderr, "  env        Audit .env.example vars: unused vars and undefined source references")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Flags:")
 	fmt.Fprintln(os.Stderr, "  -h, --help      help for bumpit")

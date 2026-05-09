@@ -11,9 +11,10 @@ import (
 	"github.com/marcelmettler/bumpit/internal/detect"
 	"github.com/marcelmettler/bumpit/internal/pkg"
 	cleanpkg "github.com/marcelmettler/bumpit/internal/pkg/clean"
-	csspkg  "github.com/marcelmettler/bumpit/internal/pkg/css"
-	i18npkg "github.com/marcelmettler/bumpit/internal/pkg/i18n"
-	todopkg "github.com/marcelmettler/bumpit/internal/pkg/todo"
+	csspkg   "github.com/marcelmettler/bumpit/internal/pkg/css"
+	envpkg   "github.com/marcelmettler/bumpit/internal/pkg/env"
+	i18npkg  "github.com/marcelmettler/bumpit/internal/pkg/i18n"
+	todopkg  "github.com/marcelmettler/bumpit/internal/pkg/todo"
 	"github.com/marcelmettler/bumpit/internal/pkg/gomod"
 	"github.com/marcelmettler/bumpit/internal/pkg/pnpm"
 	"github.com/marcelmettler/bumpit/internal/registry"
@@ -40,6 +41,7 @@ const (
 	stateCSSList                     // CSS unused-class audit
 	stateTodoList                    // TODO/FIXME/HACK/XXX audit
 	stateI18nList                    // i18n key audit
+	stateEnvList                     // .env.example audit
 )
 
 // SortMode defines available sort orders.
@@ -142,6 +144,11 @@ type msgI18nScanDone struct {
 	err    error
 }
 
+type msgEnvScanDone struct {
+	result *envpkg.ScanResult
+	err    error
+}
+
 // ── Model ─────────────────────────────────────────────────────────────────────
 
 // Config holds startup options passed from the CLI.
@@ -153,6 +160,7 @@ type Config struct {
 	CSSMode      bool // audit unused CSS classes
 	TodoMode     bool // scan for TODO/FIXME/HACK/XXX comments
 	I18nMode     bool // audit i18n translation keys
+	EnvMode      bool // audit .env.example variables
 }
 
 // Model is the bubbletea model for the entire application.
@@ -171,6 +179,7 @@ type Model struct {
 	cssMode      bool
 	todoMode     bool
 	i18nMode     bool
+	envMode      bool
 
 	// Spinner
 	spinnerFrame int
@@ -255,6 +264,14 @@ type Model struct {
 	i18nScroll       int
 	i18nFilterQuery  string
 	i18nFilterActive bool
+
+	// env mode
+	envResult       *envpkg.ScanResult
+	envItems        []envItem
+	envCursor       int
+	envScroll       int
+	envFilterQuery  string
+	envFilterActive bool
 }
 
 // New creates a new Model for the given root directory.
@@ -269,6 +286,7 @@ func New(root string, cfg Config) *Model {
 		cssMode:               cfg.CSSMode,
 		todoMode:              cfg.TodoMode,
 		i18nMode:              cfg.I18nMode,
+		envMode:               cfg.EnvMode,
 		state:                 stateInit,
 		minimumReleaseAge:     3 * 24 * time.Hour,
 		changelogFetchedNames: make(map[string]bool),
@@ -299,6 +317,11 @@ func (m *Model) Init() tea.Cmd {
 		m.state = stateLoading
 		m.statusMsg = "Scanning locale files and source references..."
 		return tea.Batch(m.cmdScanI18n(), tickCmd())
+	}
+	if m.envMode {
+		m.state = stateLoading
+		m.statusMsg = "Scanning .env files and source references..."
+		return tea.Batch(m.cmdScanEnv(), tickCmd())
 	}
 	return tea.Batch(m.cmdDetect(), tickCmd())
 }
@@ -662,6 +685,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = stateI18nList
 		return m, nil
 
+	case msgEnvScanDone:
+		if msg.err != nil {
+			m.state = stateError
+			m.err = msg.err
+			return m, nil
+		}
+		m.envResult = msg.result
+		m.rebuildEnvFiltered()
+		m.state = stateEnvList
+		return m, nil
+
 	case msgTick:
 		m.spinnerFrame++
 		if isLoadingState(m.state) {
@@ -704,6 +738,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateTodoList(msg)
 	case stateI18nList:
 		return m.updateI18nList(msg)
+	case stateEnvList:
+		return m.updateEnvList(msg)
 	}
 	return m, nil
 }
@@ -924,6 +960,9 @@ func (m *Model) View() string {
 
 	case stateI18nList:
 		return renderI18nList(m)
+
+	case stateEnvList:
+		return renderEnvList(m)
 
 	case stateRemoving:
 		return renderLoadingScreen(m, spin+"  Removing packages...")
@@ -1391,6 +1430,80 @@ func (m *Model) rebuildI18nFiltered() {
 	m.i18nItems = items
 	if m.i18nCursor >= len(m.i18nItems) {
 		m.i18nCursor = clampMin(0, len(m.i18nItems)-1)
+	}
+}
+
+func (m *Model) cmdScanEnv() tea.Cmd {
+	return func() tea.Msg {
+		result, err := envpkg.Scan(m.root)
+		return msgEnvScanDone{result: result, err: err}
+	}
+}
+
+func (m *Model) updateEnvList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.statusMsg = ""
+
+	if m.envFilterActive {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.envFilterActive = false
+			m.envFilterQuery = ""
+			m.rebuildEnvFiltered()
+		case "enter":
+			m.envFilterActive = false
+		case "backspace":
+			if len(m.envFilterQuery) > 0 {
+				m.envFilterQuery = m.envFilterQuery[:len(m.envFilterQuery)-1]
+				m.rebuildEnvFiltered()
+			}
+		default:
+			if msg.Type == tea.KeyRunes {
+				m.envFilterQuery += string(msg.Runes)
+				m.rebuildEnvFiltered()
+			}
+		}
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "j", "down":
+		if m.envCursor < len(m.envItems)-1 {
+			m.envCursor++
+		}
+	case "k", "up":
+		if m.envCursor > 0 {
+			m.envCursor--
+		}
+	case "/":
+		m.envFilterActive = true
+	}
+	return m, nil
+}
+
+func (m *Model) rebuildEnvFiltered() {
+	if m.envResult == nil {
+		m.envItems = nil
+		return
+	}
+	q := strings.ToLower(m.envFilterQuery)
+	var items []envItem
+	for _, v := range m.envResult.Unused {
+		if q == "" || strings.Contains(strings.ToLower(v.Key), q) ||
+			strings.Contains(strings.ToLower(v.File), q) {
+			items = append(items, envItem{v: v, undefined: false})
+		}
+	}
+	for _, v := range m.envResult.Undefined {
+		if q == "" || strings.Contains(strings.ToLower(v.Key), q) ||
+			strings.Contains(strings.ToLower(v.File), q) {
+			items = append(items, envItem{v: v, undefined: true})
+		}
+	}
+	m.envItems = items
+	if m.envCursor >= len(m.envItems) {
+		m.envCursor = clampMin(0, len(m.envItems)-1)
 	}
 }
 

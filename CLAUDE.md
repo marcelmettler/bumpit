@@ -22,6 +22,7 @@ go test ./internal/ui/... -run TestDetailEsc   # single test
 ./bumpit css [directory]
 ./bumpit todo [directory]
 ./bumpit i18n [directory]
+./bumpit env [directory]
 BUMPIT_DEBUG=1 ./bumpit update    # enables debug log at /tmp/bumpit-debug.log
 
 # Version / help
@@ -41,8 +42,9 @@ BUMPIT_DEBUG=1 ./bumpit update    # enables debug log at /tmp/bumpit-debug.log
 - `css` path: `stateLoading → stateCSSList` (bypasses `cmdDetect` — starts CSS scan directly from `Init()`)
 - `todo` path: `stateLoading → stateTodoList` (bypasses `cmdDetect` — starts TODO scan directly from `Init()`)
 - `i18n` path: `stateLoading → stateI18nList` (bypasses `cmdDetect` — starts locale + source scan directly from `Init()`)
+- `env` path: `stateLoading → stateEnvList` (bypasses `cmdDetect` — starts env file + source scan directly from `Init()`)
 
-`Update()` dispatches key events through `handleKey()` → `updateList()` / `updateDetail()` / `updateUnusedList()` / `updateLicenseList()` / `updateCleanList()` / `updateCSSList()` / `updateTodoList()` / `updateI18nList()`. The active path is determined by the mode flag on `Model` (`unusedMode` / `licenseMode` / `cleanMode` / `cssMode` / `todoMode` / `i18nMode`), set from `Config`.
+`Update()` dispatches key events through `handleKey()` → `updateList()` / `updateDetail()` / `updateUnusedList()` / `updateLicenseList()` / `updateCleanList()` / `updateCSSList()` / `updateTodoList()` / `updateI18nList()` / `updateEnvList()`. The active path is determined by the mode flag on `Model` (`unusedMode` / `licenseMode` / `cleanMode` / `cssMode` / `todoMode` / `i18nMode` / `envMode`), set from `Config`.
 
 **Data flow — `update`**:
 1. `cmdDetect()` → `detect.Find()` discovers `pnpm-lock.yaml` and `go.mod` files
@@ -90,9 +92,9 @@ BUMPIT_DEBUG=1 ./bumpit update    # enables debug log at /tmp/bumpit-debug.log
 4. Results sorted by file then line; `rebuildTodoFiltered()` applies the filter query across kind, text, and file path
 
 **Package layout**:
-- `internal/ui/` — all BubblaTea code: `model.go` (state machine), `list.go` (update list view), `detail.go` (changelog detail), `unused.go` (unused list view + remove summary), `license.go` (license audit view), `clean.go` (clean workspace view), `css.go` (CSS unused-class view), `todo.go` (TODO audit view), `i18n.go` (i18n key audit view), `loading.go` (indeterminate progress bar), `styles.go` (lipgloss styles), `debug.go` (gated debug log)
+- `internal/ui/` — all BubblaTea code: `model.go` (state machine), `list.go` (update list view), `detail.go` (changelog detail), `unused.go` (unused list view + remove summary), `license.go` (license audit view), `clean.go` (clean workspace view), `css.go` (CSS unused-class view), `todo.go` (TODO audit view), `i18n.go` (i18n key audit view), `env.go` (env var audit view), `loading.go` (indeterminate progress bar), `styles.go` (lipgloss styles), `debug.go` (gated debug log)
 - `internal/detect/` — finds `pnpm-lock.yaml` and `go.mod` files
-- `internal/pkg/` — shared structs (`PackageUpdate`, `UnusedPackage`, `LicenseInfo`, `LicenseCategory`, `ArtifactDir`, `CSSClass`, `TodoItem`, `I18nKey`); `pnpm/`, `gomod/`, `clean/`, `css/`, `todo/`, and `i18n/` subdirs for each domain
+- `internal/pkg/` — shared structs (`PackageUpdate`, `UnusedPackage`, `LicenseInfo`, `LicenseCategory`, `ArtifactDir`, `CSSClass`, `TodoItem`, `I18nKey`, `EnvVar`); `pnpm/`, `gomod/`, `clean/`, `css/`, `todo/`, `i18n/`, and `env/` subdirs for each domain
 - `internal/changelog/` — `github.go` fetches GitHub releases/CHANGELOG; `changelog.go` orchestrates; `extract.go` parses markdown into `Highlights`
 - `internal/registry/` — npm registry API for publish date and repo URL
 
@@ -119,6 +121,8 @@ BUMPIT_DEBUG=1 ./bumpit update    # enables debug log at /tmp/bumpit-debug.log
 **i18n key scanning** (`internal/pkg/i18n/i18n.go`): `Scan(root)` does two passes. Pass 1 finds JSON files inside `localeDirNames` directories and calls `flattenKeys()` to recursively flatten nested objects into dot-notation keys; multiple locale files are merged (dedup by key). Pass 2 scans source files with `reExplicit` (`\$t|i18n\.t|translate`) and `reBareT` (`[^a-zA-Z_$\d]t\s*\(`) — bare `t(` requires a non-identifier preceding char to avoid matching `gettext()`, `next()`, etc. `ScanResult.Unused` / `.Undefined` follow the same `~`/`?` pattern as CSS. Dynamic keys (template literals) cannot be resolved and are not detected.
 
 **TODO scanning** (`internal/pkg/todo/todo.go`): `Scan(root)` walks all source files matching a broad extension set, reads each file line by line with `bufio.Scanner`, and applies `\b(TODO|FIXME|HACK|XXX)\b` to each line. Captures the trailing text, strips comment closers (`*/`, `-->`) and `TODO(author):` prefix patterns. Results sorted by file then line. `internal/ui/todo.go` renders a color-coded list (`TODO` blue, `FIXME`/`HACK` orange, `XXX` red); filter searches kind, text, and file path.
+
+**Env var scanning** (`internal/pkg/env/env.go`): `Scan(root)` does two passes. Pass 1 finds `.env.example`/`.env.sample`/`.env.template`/`.env.defaults`/`.env.schema` files and parses declarations with `^(?:export\s+)?KEY=` regex. Pass 2 walks source files (`.js`/`.ts`/`.go`/`.py`/`.sh`/`.yaml` and related) and applies 8 `refPatterns` covering `process.env.KEY`, `import.meta.env.KEY`, `os.Getenv()`, `os.environ[]`, and `${KEY}` YAML substitution. Shell bare `$KEY` (without `{}`) is intentionally excluded to avoid noise from `$HOME`, `$PATH` etc. `ScanResult.Unused` / `.Undefined` follow the `~`/`?` two-direction pattern. `internal/ui/env.go` renders a combined list; filter searches variable name and file path.
 
 **CSS class scanning** (`internal/pkg/css/css.go`): `Scan(root)` performs two `filepath.WalkDir` passes. Pass 1 extracts CSS class definitions. Pass 2 calls `extractClassRefs(content, relPath)` which returns two maps: `broad` (class attrs + string literals, used for `ScanResult.Unused`) and `explicit` (class attrs only with file/line, used for `ScanResult.Undefined`). String literals are excluded from `explicit` to avoid false positives — common English words would otherwise appear as missing CSS definitions. `.module.css` files and lines containing `&` are skipped. `detectTailwind()` checks for tailwind config files at root. The UI merges both result sets into `[]cssItem` with an `undefined bool` flag; `~` = unused, `?` = undefined.
 

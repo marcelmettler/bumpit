@@ -166,6 +166,13 @@ type UnusedPackage struct {
 	Selected bool
 }
 
+// EnvVar represents an environment variable — either defined in a .env.example file or referenced in source.
+type EnvVar struct {
+	Key  string
+	File string
+	Line int
+}
+
 // I18nKey represents a translation key — either defined in a locale file or referenced in source code.
 type I18nKey struct {
 	Key  string // dot-notation key, e.g. "common.save"

@@ -55,6 +55,12 @@ var (
 	reExplicit = regexp.MustCompile(`(?:\$t|i18n\.t|translate)\s*\(\s*['"]([^'"]+)['"]`)
 	// Bare t('key') — require non-identifier preceding char to avoid matching gettext(), next(), etc.
 	reBareT = regexp.MustCompile(`(?:^|[^a-zA-Z_$\d])t\s*\(\s*['"]([^'"]+)['"]`)
+	// Angular template pipe: 'key' | translate  or  'key' | transloco
+	reAngularPipe = regexp.MustCompile(`['"]([^'"]+)['"]\s*\|\s*(?:translate|transloco)\b`)
+	// Angular directive attribute: translate="key"  or  transloco="key"
+	reAngularDirective = regexp.MustCompile(`(?:translate|transloco)="([^"]+)"`)
+	// TranslateService / TranslocoService methods: .instant('key'), .stream('key'), .selectTranslate('key')
+	reServiceMethod = regexp.MustCompile(`\.(?:instant|stream|selectTranslate)\s*\(\s*['"]([^'"]+)['"]`)
 )
 
 // Scan walks root, parses locale JSON files, scans source for t() calls,
@@ -219,16 +225,12 @@ func extractRefs(absPath, relPath string) map[string]*pkg.I18nKey {
 		lineNum++
 		lb := []byte(sc.Text())
 
-		for _, m := range reExplicit.FindAllSubmatch(lb, -1) {
-			key := string(m[1])
-			if _, ok := refs[key]; !ok {
-				refs[key] = &pkg.I18nKey{Key: key, File: relPath, Line: lineNum}
-			}
-		}
-		for _, m := range reBareT.FindAllSubmatch(lb, -1) {
-			key := string(m[1])
-			if _, ok := refs[key]; !ok {
-				refs[key] = &pkg.I18nKey{Key: key, File: relPath, Line: lineNum}
+		for _, re := range []*regexp.Regexp{reExplicit, reBareT, reAngularPipe, reAngularDirective, reServiceMethod} {
+			for _, m := range re.FindAllSubmatch(lb, -1) {
+				key := string(m[1])
+				if _, ok := refs[key]; !ok {
+					refs[key] = &pkg.I18nKey{Key: key, File: relPath, Line: lineNum}
+				}
 			}
 		}
 	}
