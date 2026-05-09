@@ -166,6 +166,13 @@ type UnusedPackage struct {
 	Selected bool
 }
 
+// I18nKey represents a translation key — either defined in a locale file or referenced in source code.
+type I18nKey struct {
+	Key  string // dot-notation key, e.g. "common.save"
+	File string // relative path
+	Line int    // 0 for locale file entries (JSON line numbers not tracked)
+}
+
 // TodoItem represents a TODO/FIXME/HACK/XXX comment found in source code.
 type TodoItem struct {
 	Kind string // "TODO", "FIXME", "HACK", "XXX"

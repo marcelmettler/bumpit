@@ -30,6 +30,7 @@ bumpit license [directory]   # audit dependency licenses
 bumpit clean [directory]     # find and delete generated artifact directories
 bumpit css [directory]       # two-way CSS audit: unused selectors and missing definitions
 bumpit todo [directory]      # list all TODO, FIXME, HACK, and XXX comments
+bumpit i18n [directory]      # two-way translation key audit: unused keys and undefined references
 ```
 
 All commands default to the current directory. Run `bumpit --help` for a full flag listing.
@@ -116,6 +117,27 @@ Read-only — `bumpit css` reports findings but does not modify any files.
 
 Scans: `.go`, `.js`, `.ts`, `.jsx`, `.tsx`, `.vue`, `.svelte`, `.css`, `.scss`, `.html`, `.yaml`, `.sh`, and more. Filter with `/` to search by kind, file, or comment text. Read-only.
 
+### `bumpit i18n`
+
+**Two-way translation key audit.** Checks for drift between your locale files and source code in both directions:
+
+| Indicator | Meaning |
+|-----------|---------|
+| `~` (orange) | Key defined in a locale file but never called in source |
+| `?` (red) | `t('key')` call in source with no matching key in any locale file |
+
+The `~` direction surfaces dead translations you can safely delete. The `?` direction catches typos and stale references — calls that will silently fall back to the raw key at runtime.
+
+**Locale file discovery.** Scans all JSON files inside directories named `locales/`, `locale/`, `i18n/`, `translations/`, `lang/`, or `langs/`. Nested JSON objects are flattened to dot-notation keys (`section.subsection.key`). Multiple locale files are merged — a key is considered defined if it exists in any locale file.
+
+**Source reference detection.** Matches `t('key')`, `$t('key')`, `i18n.t('key')`, and `translate('key')`. Bare `t(` calls require a non-identifier preceding character to avoid false positives from similarly-named functions. Works with Vue i18n, react-i18next, and most i18n libraries.
+
+**Limitations:**
+- Namespaced calls like `t('common:key')` (react-i18next namespaces) are matched literally — the key `common:key` must exist in the locale file as-is.
+- Dynamic keys (`t(\`prefix.${var}\`)`) cannot be statically resolved and are not detected.
+
+Read-only.
+
 ## Installation
 
 **Download a pre-built binary** from the [releases page](https://github.com/marcelmettler/bumpit/releases/latest):
@@ -196,6 +218,13 @@ bumpit todo
 bumpit todo /path/to/project
 ```
 
+### `bumpit i18n`
+
+```bash
+bumpit i18n
+bumpit i18n /path/to/project
+```
+
 ### GitHub authentication
 
 Changelogs are fetched from the GitHub API. Unauthenticated requests are limited to 60 per hour. `bumpit` automatically resolves credentials from your existing machine state — no setup required if you already use the GitHub CLI or have git configured with HTTPS:
@@ -270,6 +299,13 @@ Packages published less than 3 days ago will show `⏳ Nd left` instead of a sta
 1. **Scan** — walks all source files matching a broad extension list (`.go`, `.js`/`.ts`, `.vue`, `.svelte`, `.css`/`.scss`, `.html`, `.yaml`, `.sh`, and more); skips `node_modules`, `dist`, `.git`, and other artifact directories
 2. **Match** — per line, applies `\b(TODO|FIXME|HACK|XXX)\b` regex; captures the text following the keyword, strips trailing comment closers (`*/`, `-->`) and `TODO(author):` prefixes
 3. **Display** — read-only list sorted by file then line; color-coded by kind (`TODO` blue, `FIXME`/`HACK` orange, `XXX` red); `/` filters by kind, text, or file
+
+### `bumpit i18n`
+
+1. **Locale scan** — walks all JSON files inside `locales/`, `i18n/`, `translations/`, `lang/` directories; parses each with `encoding/json` and recursively flattens nested objects to dot-notation keys; deduplicates across multiple locale files
+2. **Source scan** — walks `.js`/`.ts`/`.jsx`/`.tsx`/`.vue`/`.svelte`/`.html` files line by line; applies two patterns: `\$t|i18n\.t|translate` (explicit) and `[^a-zA-Z_$\d]t\s*\(` (bare `t()`) for broad coverage
+3. **Diff both ways** — `~` = defined in locale but not in source refs; `?` = in source refs but absent from all locale files
+4. **Display** — combined scrollable list (unused first, then undefined); `/` filters by key or file
 
 ## Status indicators
 

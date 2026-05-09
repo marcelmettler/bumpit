@@ -29,6 +29,8 @@ func main() {
 		runCSS(os.Args[2:])
 	case "todo":
 		runTodo(os.Args[2:])
+	case "i18n":
+		runI18n(os.Args[2:])
 	case "-v", "--version", "version":
 		fmt.Println("bumpit", buildVersion())
 	case "-h", "--help", "help":
@@ -85,6 +87,23 @@ func runLicense(args []string) {
 	}
 	_ = fs.Parse(args)
 	runTUI(ui.New(rootDir(fs.Args()), ui.Config{LicenseMode: true}))
+}
+
+func runI18n(args []string) {
+	fs := flag.NewFlagSet("i18n", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Audit translation keys: find unused locale keys and undefined source references")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage:")
+		fmt.Fprintln(os.Stderr, "  bumpit i18n [directory]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Expects JSON locale files inside a directory named locales/, i18n/, translations/, or lang/.")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fmt.Fprintln(os.Stderr, "  -h, --help   help for i18n")
+	}
+	_ = fs.Parse(args)
+	runTUI(ui.New(rootDir(fs.Args()), ui.Config{I18nMode: true}))
 }
 
 func runTodo(args []string) {
@@ -165,6 +184,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  clean      Find and delete generated artifact directories interactively")
 	fmt.Fprintln(os.Stderr, "  css        Find CSS class selectors never referenced in templates")
 	fmt.Fprintln(os.Stderr, "  todo       Scan for TODO, FIXME, HACK, and XXX comments")
+	fmt.Fprintln(os.Stderr, "  i18n       Audit translation keys: unused locale keys and undefined references")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Flags:")
 	fmt.Fprintln(os.Stderr, "  -h, --help      help for bumpit")

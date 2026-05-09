@@ -12,6 +12,7 @@ import (
 	"github.com/marcelmettler/bumpit/internal/pkg"
 	cleanpkg "github.com/marcelmettler/bumpit/internal/pkg/clean"
 	csspkg  "github.com/marcelmettler/bumpit/internal/pkg/css"
+	i18npkg "github.com/marcelmettler/bumpit/internal/pkg/i18n"
 	todopkg "github.com/marcelmettler/bumpit/internal/pkg/todo"
 	"github.com/marcelmettler/bumpit/internal/pkg/gomod"
 	"github.com/marcelmettler/bumpit/internal/pkg/pnpm"
@@ -38,6 +39,7 @@ const (
 	stateCleanDone                   // deletion complete
 	stateCSSList                     // CSS unused-class audit
 	stateTodoList                    // TODO/FIXME/HACK/XXX audit
+	stateI18nList                    // i18n key audit
 )
 
 // SortMode defines available sort orders.
@@ -135,6 +137,11 @@ type msgTodoScanDone struct {
 	err    error
 }
 
+type msgI18nScanDone struct {
+	result *i18npkg.ScanResult
+	err    error
+}
+
 // ── Model ─────────────────────────────────────────────────────────────────────
 
 // Config holds startup options passed from the CLI.
@@ -145,6 +152,7 @@ type Config struct {
 	CleanMode    bool // find and delete artifact directories
 	CSSMode      bool // audit unused CSS classes
 	TodoMode     bool // scan for TODO/FIXME/HACK/XXX comments
+	I18nMode     bool // audit i18n translation keys
 }
 
 // Model is the bubbletea model for the entire application.
@@ -162,6 +170,7 @@ type Model struct {
 	cleanMode    bool
 	cssMode      bool
 	todoMode     bool
+	i18nMode     bool
 
 	// Spinner
 	spinnerFrame int
@@ -232,12 +241,20 @@ type Model struct {
 	cssFilterActive bool
 
 	// Todo mode
-	todoResult      *todopkg.ScanResult
-	todoFiltered    []*pkg.TodoItem
-	todoCursor      int
-	todoScroll      int
-	todoFilterQuery string
+	todoResult       *todopkg.ScanResult
+	todoFiltered     []*pkg.TodoItem
+	todoCursor       int
+	todoScroll       int
+	todoFilterQuery  string
 	todoFilterActive bool
+
+	// i18n mode
+	i18nResult       *i18npkg.ScanResult
+	i18nItems        []i18nItem
+	i18nCursor       int
+	i18nScroll       int
+	i18nFilterQuery  string
+	i18nFilterActive bool
 }
 
 // New creates a new Model for the given root directory.
@@ -251,6 +268,7 @@ func New(root string, cfg Config) *Model {
 		cleanMode:             cfg.CleanMode,
 		cssMode:               cfg.CSSMode,
 		todoMode:              cfg.TodoMode,
+		i18nMode:              cfg.I18nMode,
 		state:                 stateInit,
 		minimumReleaseAge:     3 * 24 * time.Hour,
 		changelogFetchedNames: make(map[string]bool),
@@ -276,6 +294,11 @@ func (m *Model) Init() tea.Cmd {
 		m.state = stateLoading
 		m.statusMsg = "Scanning for TODO comments..."
 		return tea.Batch(m.cmdScanTodo(), tickCmd())
+	}
+	if m.i18nMode {
+		m.state = stateLoading
+		m.statusMsg = "Scanning locale files and source references..."
+		return tea.Batch(m.cmdScanI18n(), tickCmd())
 	}
 	return tea.Batch(m.cmdDetect(), tickCmd())
 }
@@ -628,6 +651,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = stateTodoList
 		return m, nil
 
+	case msgI18nScanDone:
+		if msg.err != nil {
+			m.state = stateError
+			m.err = msg.err
+			return m, nil
+		}
+		m.i18nResult = msg.result
+		m.rebuildI18nFiltered()
+		m.state = stateI18nList
+		return m, nil
+
 	case msgTick:
 		m.spinnerFrame++
 		if isLoadingState(m.state) {
@@ -668,6 +702,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateCSSList(msg)
 	case stateTodoList:
 		return m.updateTodoList(msg)
+	case stateI18nList:
+		return m.updateI18nList(msg)
 	}
 	return m, nil
 }
@@ -885,6 +921,9 @@ func (m *Model) View() string {
 
 	case stateTodoList:
 		return renderTodoList(m)
+
+	case stateI18nList:
+		return renderI18nList(m)
 
 	case stateRemoving:
 		return renderLoadingScreen(m, spin+"  Removing packages...")
@@ -1278,6 +1317,80 @@ func (m *Model) rebuildTodoFiltered() {
 	m.todoFiltered = filtered
 	if m.todoCursor >= len(m.todoFiltered) {
 		m.todoCursor = clampMin(0, len(m.todoFiltered)-1)
+	}
+}
+
+func (m *Model) cmdScanI18n() tea.Cmd {
+	return func() tea.Msg {
+		result, err := i18npkg.Scan(m.root)
+		return msgI18nScanDone{result: result, err: err}
+	}
+}
+
+func (m *Model) updateI18nList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.statusMsg = ""
+
+	if m.i18nFilterActive {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.i18nFilterActive = false
+			m.i18nFilterQuery = ""
+			m.rebuildI18nFiltered()
+		case "enter":
+			m.i18nFilterActive = false
+		case "backspace":
+			if len(m.i18nFilterQuery) > 0 {
+				m.i18nFilterQuery = m.i18nFilterQuery[:len(m.i18nFilterQuery)-1]
+				m.rebuildI18nFiltered()
+			}
+		default:
+			if msg.Type == tea.KeyRunes {
+				m.i18nFilterQuery += string(msg.Runes)
+				m.rebuildI18nFiltered()
+			}
+		}
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "j", "down":
+		if m.i18nCursor < len(m.i18nItems)-1 {
+			m.i18nCursor++
+		}
+	case "k", "up":
+		if m.i18nCursor > 0 {
+			m.i18nCursor--
+		}
+	case "/":
+		m.i18nFilterActive = true
+	}
+	return m, nil
+}
+
+func (m *Model) rebuildI18nFiltered() {
+	if m.i18nResult == nil {
+		m.i18nItems = nil
+		return
+	}
+	q := strings.ToLower(m.i18nFilterQuery)
+	var items []i18nItem
+	for _, k := range m.i18nResult.Unused {
+		if q == "" || strings.Contains(strings.ToLower(k.Key), q) ||
+			strings.Contains(strings.ToLower(k.File), q) {
+			items = append(items, i18nItem{key: k, undefined: false})
+		}
+	}
+	for _, k := range m.i18nResult.Undefined {
+		if q == "" || strings.Contains(strings.ToLower(k.Key), q) ||
+			strings.Contains(strings.ToLower(k.File), q) {
+			items = append(items, i18nItem{key: k, undefined: true})
+		}
+	}
+	m.i18nItems = items
+	if m.i18nCursor >= len(m.i18nItems) {
+		m.i18nCursor = clampMin(0, len(m.i18nItems)-1)
 	}
 }
 
