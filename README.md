@@ -39,6 +39,8 @@ Instead of running `pnpm outdated`, opening ten GitHub changelog pages, and gues
 
 **Go modules.** Parses `go list -m -u -json all` output alongside npm packages in a unified list.
 
+**Unused dependency detection.** Scans your source files, scripts, and tool config files to find direct dependencies that are never referenced. Select and remove them interactively. Understands ecosystem-specific patterns so it won't flag build tools, type definitions, or platform packages that are used without being directly imported.
+
 ## Installation
 
 **Download a pre-built binary** from the [releases page](https://github.com/marcelmettler/bumpit/releases/latest):
@@ -74,17 +76,35 @@ Requires Go 1.22+. For npm packages, `pnpm` must be available in your PATH.
 
 ## Usage
 
-Run from any project directory:
+`bumpit` has two commands:
 
 ```bash
-bumpit
+bumpit update [directory]   # show outdated packages and update them interactively
+bumpit unused [directory]   # find unused direct dependencies and remove them
 ```
 
-Or point it at a specific path:
+Both commands default to the current directory. Run `bumpit --help` for a full flag listing.
+
+### `bumpit update`
 
 ```bash
-bumpit /path/to/project
+bumpit update
+bumpit update /path/to/project
+bumpit update --show-indirect   # include indirect Go module dependencies
 ```
+
+### `bumpit unused`
+
+Scans your direct dependencies against source files, `package.json` scripts, and tool config files (`angular.json`, `nx.json`, `.eslintrc.json`, `.commitlintrc`, etc.) to find packages that are never referenced.
+
+```bash
+bumpit unused
+bumpit unused /path/to/project
+```
+
+Ecosystem-aware — will not flag:
+- `@types/*` packages when the corresponding package is installed
+- TypeScript, ESLint plugins/configs, Nx plugins, Capacitor platform packages, Vite/jsdom (as vitest peers), Angular build tooling, commitlint configs
 
 ### GitHub authentication
 
@@ -114,7 +134,7 @@ Packages published less than 3 days ago will show `⏳ Nd left` instead of a sta
 
 ## Key bindings
 
-### List view
+### `update` — list view
 
 | Key | Action |
 |-----|--------|
@@ -129,7 +149,7 @@ Packages published less than 3 days ago will show `⏳ Nd left` instead of a sta
 | `?` | Toggle help overlay |
 | `q` | Quit |
 
-### Detail view
+### `update` — detail view
 
 | Key | Action |
 |-----|--------|
@@ -140,7 +160,20 @@ Packages published less than 3 days ago will show `⏳ Nd left` instead of a sta
 | `u` | Update this package |
 | `q` | Quit |
 
+### `unused` — list view
+
+| Key | Action |
+|-----|--------|
+| `j` / `↓` | Move cursor down |
+| `k` / `↑` | Move cursor up |
+| `space` | Toggle selection |
+| `a` | Select / deselect all visible |
+| `r` | Remove selected packages |
+| `q` | Quit |
+
 ## How it works
+
+### `bumpit update`
 
 1. **Detect** — walks the directory tree to find `package.json` and `go.mod` files
 2. **Fetch outdated** — runs `pnpm outdated --json` or `go list -m -u -json all` per directory
@@ -148,6 +181,15 @@ Packages published less than 3 days ago will show `⏳ Nd left` instead of a sta
 4. **Changelogs** — calls the GitHub releases API, filters to the relevant version range, and renders markdown in the terminal using [glamour](https://github.com/charmbracelet/glamour)
 5. **Audit** — runs `pnpm audit --json` in the background and annotates vulnerable packages
 6. **Update** — runs `pnpm update --latest <pkg...>` grouped by directory for monorepo correctness
+
+### `bumpit unused`
+
+1. **Detect** — same file discovery as `update`
+2. **Scan imports** — walks all `.js/.ts/.jsx/.tsx/.mjs/.cjs/.vue/.svelte` source files across the entire workspace root collecting `import`/`require` references
+3. **Scan scripts** — checks `package.json` scripts for package name references (catches CLI tools like `prettier`)
+4. **Scan configs** — reads `angular.json`, `nx.json`, `project.json`, `.eslintrc.json`, `.commitlintrc.json` for executor and parser strings
+5. **Ecosystem rules** — applies per-ecosystem knowledge to skip packages that are used without being imported (build tools, type stubs, platform packages)
+6. **Remove** — runs `pnpm remove <pkg...>` or `go get <mod>@none && go mod tidy` for selected packages
 
 ## Status indicators
 
@@ -177,7 +219,11 @@ go build -o bumpit .
 go test ./...
 ```
 
-Set `BUMPIT_DEBUG=1` to write a trace log to `/tmp/bumpit-debug.log`.
+Set `BUMPIT_DEBUG=1` to write a trace log to `/tmp/bumpit-debug.log`:
+
+```bash
+BUMPIT_DEBUG=1 bumpit update
+```
 
 ## License
 

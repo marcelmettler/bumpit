@@ -105,6 +105,16 @@ func (p *PackageUpdate) SetCachedRender(rendered string, width int) {
 	p.renderedWidth = width
 }
 
+// UnusedPackage holds information about a direct dependency not imported anywhere in the project.
+type UnusedPackage struct {
+	Name     string
+	Dir      string
+	DirName  string
+	Source   string // "npm" | "go"
+	DepType  DepType
+	Selected bool
+}
+
 // AgeDisplay returns a human-readable age string.
 func (p *PackageUpdate) AgeDisplay() string {
 	if p.PublishedAt.IsZero() {

@@ -19,13 +19,16 @@ import (
 type appState int
 
 const (
-	stateInit     appState = iota // detecting files
-	stateLoading                  // fetching packages
-	stateList                     // main interactive list
-	stateDetail                   // changelog detail view
-	stateUpdating                 // running pnpm update
-	stateDone                     // update complete
-	stateError                    // fatal error
+	stateInit        appState = iota // detecting files
+	stateLoading                     // fetching packages
+	stateList                        // main interactive list
+	stateDetail                      // changelog detail view
+	stateUpdating                    // running pnpm update
+	stateDone                        // update complete
+	stateError                       // fatal error
+	stateUnusedList                  // unused deps list
+	stateRemoving                    // running removal
+	stateRemoveDone                  // removal complete
 )
 
 // SortMode defines available sort orders.
@@ -50,7 +53,11 @@ func (s SortMode) String() string {
 	}
 }
 
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
 // ── Messages ──────────────────────────────────────────────────────────────────
+
+type msgTick struct{}
 
 type msgDetectDone struct {
 	files []detect.PackageFile
@@ -82,11 +89,23 @@ type msgUpdateDone struct {
 	err     error
 }
 
+type msgUnusedDone struct {
+	packages []*pkg.UnusedPackage
+	err      error
+}
+
+type msgRemoveDone struct {
+	output  string
+	removed []*pkg.UnusedPackage
+	err     error
+}
+
 // ── Model ─────────────────────────────────────────────────────────────────────
 
 // Config holds startup options passed from the CLI.
 type Config struct {
 	ShowIndirect bool // include indirect Go module dependencies
+	UnusedMode   bool // scan for unused deps instead of outdated
 }
 
 // Model is the bubbletea model for the entire application.
@@ -99,6 +118,10 @@ type Model struct {
 
 	// Config
 	showIndirect bool
+	unusedMode   bool
+
+	// Spinner
+	spinnerFrame int
 
 	// Data
 	files    []detect.PackageFile
@@ -129,6 +152,16 @@ type Model struct {
 
 	// Track changelog fetches in-flight
 	changelogFetchedNames map[string]bool
+
+	// Unused deps mode
+	unusedPackages []*pkg.UnusedPackage
+	unusedFiltered []*pkg.UnusedPackage
+	unusedCursor   int
+	unusedScroll   int
+
+	// Remove result
+	removedPackages []*pkg.UnusedPackage
+	removeOutput    string
 }
 
 // New creates a new Model for the given root directory.
@@ -137,15 +170,24 @@ func New(root string, cfg Config) *Model {
 	return &Model{
 		root:                  root,
 		showIndirect:          cfg.ShowIndirect,
+		unusedMode:            cfg.UnusedMode,
 		state:                 stateInit,
 		minimumReleaseAge:     3 * 24 * time.Hour,
 		changelogFetchedNames: make(map[string]bool),
 	}
 }
 
+func tickCmd() tea.Cmd {
+	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg { return msgTick{} })
+}
+
+func isLoadingState(s appState) bool {
+	return s == stateInit || s == stateLoading || s == stateUpdating || s == stateRemoving
+}
+
 // Init starts the detection phase.
 func (m *Model) Init() tea.Cmd {
-	return m.cmdDetect()
+	return tea.Batch(m.cmdDetect(), tickCmd())
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────
@@ -239,6 +281,64 @@ func (m *Model) cmdRunUpdate(packages []*pkg.PackageUpdate) tea.Cmd {
 	}
 }
 
+func (m *Model) cmdFindUnused(files []detect.PackageFile) tea.Cmd {
+	return func() tea.Msg {
+		// Walk the workspace once and share the result across all package.json files.
+		ws := pnpm.ScanWorkspace(m.root)
+
+		var all []*pkg.UnusedPackage
+		for _, f := range files {
+			switch {
+			case f.PackageManager == detect.PackageManagerPNPM:
+				if !pnpm.IsInstalled() {
+					continue
+				}
+				pkgs, err := pnpm.FindUnused(f.Dir, m.root, ws)
+				if err == nil {
+					all = append(all, pkgs...)
+				}
+			case f.HasGoMod && gomod.IsInstalled():
+				pkgs, err := gomod.FindUnused(f.Dir, m.root)
+				if err == nil {
+					all = append(all, pkgs...)
+				}
+			}
+		}
+		return msgUnusedDone{packages: all}
+	}
+}
+
+func (m *Model) cmdRunRemove(packages []*pkg.UnusedPackage) tea.Cmd {
+	return func() tea.Msg {
+		type dirKey struct{ dir, source string }
+		byDir := make(map[dirKey][]*pkg.UnusedPackage)
+		for _, p := range packages {
+			key := dirKey{p.Dir, p.Source}
+			byDir[key] = append(byDir[key], p)
+		}
+
+		var allOutput strings.Builder
+		for key, pkgs := range byDir {
+			var names []string
+			for _, p := range pkgs {
+				names = append(names, p.Name)
+			}
+			var out string
+			var err error
+			if key.source == "npm" {
+				out, err = pnpm.RunRemove(key.dir, names)
+			} else {
+				out, err = gomod.RunRemove(key.dir, names)
+			}
+			allOutput.WriteString(out)
+			if err != nil {
+				return msgRemoveDone{output: allOutput.String(), err: err, removed: packages}
+			}
+		}
+		return msgRemoveDone{output: allOutput.String(), removed: packages}
+	}
+}
+
 // ── Update ────────────────────────────────────────────────────────────────────
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -252,6 +352,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case msgDetectDone:
 		m.files = msg.files
 		m.state = stateLoading
+		if m.unusedMode {
+			m.statusMsg = fmt.Sprintf("Scanning %d package files for unused dependencies...", len(m.files))
+			return m, m.cmdFindUnused(m.files)
+		}
 		m.statusMsg = fmt.Sprintf("Scanning %d package files...", len(m.files))
 		return m, m.cmdFetchPackages(m.files)
 
@@ -349,6 +453,36 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case msgUnusedDone:
+		if msg.err != nil {
+			m.state = stateError
+			m.err = msg.err
+			return m, nil
+		}
+		m.unusedPackages = msg.packages
+		sortUnused(m.unusedPackages)
+		m.rebuildUnusedFiltered()
+		m.state = stateUnusedList
+		return m, nil
+
+	case msgRemoveDone:
+		m.removedPackages = msg.removed
+		m.removeOutput = msg.output
+		if msg.err != nil {
+			m.state = stateError
+			m.err = msg.err
+		} else {
+			m.state = stateRemoveDone
+		}
+		return m, nil
+
+	case msgTick:
+		m.spinnerFrame++
+		if isLoadingState(m.state) {
+			return m, tickCmd()
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -368,6 +502,55 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateDetail(msg)
 	case stateDone:
 		return m, tea.Quit
+	case stateUnusedList:
+		return m.updateUnusedList(msg)
+	case stateRemoveDone:
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m *Model) updateUnusedList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.statusMsg = ""
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+
+	case "j", "down":
+		if m.unusedCursor < len(m.unusedFiltered)-1 {
+			m.unusedCursor++
+		}
+
+	case "k", "up":
+		if m.unusedCursor > 0 {
+			m.unusedCursor--
+		}
+
+	case " ":
+		if len(m.unusedFiltered) > 0 {
+			m.unusedFiltered[m.unusedCursor].Selected = !m.unusedFiltered[m.unusedCursor].Selected
+		}
+
+	case "a":
+		allSelected := true
+		for _, p := range m.unusedFiltered {
+			if !p.Selected {
+				allSelected = false
+				break
+			}
+		}
+		for _, p := range m.unusedFiltered {
+			p.Selected = !allSelected
+		}
+
+	case "r":
+		selected := selectedUnused(m.unusedPackages)
+		if len(selected) == 0 {
+			m.statusMsg = "No packages selected. Press SPACE to select."
+		} else {
+			m.state = stateRemoving
+			return m, m.cmdRunRemove(selected)
+		}
 	}
 	return m, nil
 }
@@ -496,13 +679,14 @@ func (m *Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // ── View ──────────────────────────────────────────────────────────────────────
 
 func (m *Model) View() string {
+	spin := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
+
 	switch m.state {
 	case stateInit:
-		return styleHeader.Render("\n  Detecting package files...") + "\n"
+		return renderLoadingScreen(m, spin+"  Detecting package files...")
 
 	case stateLoading:
-		return styleHeader.Render("\n  Loading outdated packages...") + "\n" +
-			styleMuted.Render("  "+m.statusMsg) + "\n"
+		return renderLoadingScreen(m, spin+"  "+m.statusMsg)
 
 	case stateList:
 		if m.showHelp {
@@ -513,12 +697,20 @@ func (m *Model) View() string {
 	case stateDetail:
 		return renderDetail(m)
 
-	case stateUpdating:
-		return styleHeader.Render("\n  Running updates...") + "\n" +
-			styleMuted.Render("  Please wait...") + "\n"
-
 	case stateDone:
 		return renderUpdateSummary(m.updatedPackages, m.updateOutput)
+
+	case stateUpdating:
+		return renderLoadingScreen(m, spin+"  Running updates...")
+
+	case stateUnusedList:
+		return renderUnusedList(m)
+
+	case stateRemoving:
+		return renderLoadingScreen(m, spin+"  Removing packages...")
+
+	case stateRemoveDone:
+		return renderRemoveSummary(m.removedPackages, m.removeOutput)
 
 	case stateError:
 		errMsg := "unknown error"
@@ -594,4 +786,32 @@ func clampMin(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func selectedUnused(packages []*pkg.UnusedPackage) []*pkg.UnusedPackage {
+	var sel []*pkg.UnusedPackage
+	for _, p := range packages {
+		if p.Selected {
+			sel = append(sel, p)
+		}
+	}
+	return sel
+}
+
+func sortUnused(packages []*pkg.UnusedPackage) {
+	sort.SliceStable(packages, func(i, j int) bool {
+		a, b := packages[i], packages[j]
+		if a.Source != b.Source {
+			return a.Source < b.Source
+		}
+		return a.Name < b.Name
+	})
+}
+
+func (m *Model) rebuildUnusedFiltered() {
+	m.unusedFiltered = make([]*pkg.UnusedPackage, len(m.unusedPackages))
+	copy(m.unusedFiltered, m.unusedPackages)
+	if m.unusedCursor >= len(m.unusedFiltered) {
+		m.unusedCursor = clampMin(0, len(m.unusedFiltered)-1)
+	}
 }

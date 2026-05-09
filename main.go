@@ -11,44 +11,94 @@ import (
 )
 
 func main() {
-	showVersion := flag.Bool("version", false, "print version and exit")
-	flag.BoolVar(showVersion, "v", false, "print version and exit")
-	showIndirect := flag.Bool("show-indirect", false, "include indirect Go module dependencies")
+	if len(os.Args) < 2 {
+		printUsage()
+		os.Exit(1)
+	}
 
-	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Interactive dependency updater")
+	switch os.Args[1] {
+	case "update":
+		runUpdate(os.Args[2:])
+	case "unused":
+		runUnused(os.Args[2:])
+	case "-v", "--version", "version":
+		fmt.Println("bumpit", buildVersion())
+	case "-h", "--help", "help":
+		printUsage()
+	default:
+		fmt.Fprintf(os.Stderr, "bumpit: unknown command %q\n\n", os.Args[1])
+		printUsage()
+		os.Exit(1)
+	}
+}
+
+func runUpdate(args []string) {
+	fs := flag.NewFlagSet("update", flag.ExitOnError)
+	showIndirect := fs.Bool("show-indirect", false, "include indirect Go module dependencies")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Show outdated packages and update them interactively")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Usage:")
-		fmt.Fprintln(os.Stderr, "  bumpit [flags] [directory]")
+		fmt.Fprintln(os.Stderr, "  bumpit update [flags] [directory]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
-		fmt.Fprintln(os.Stderr, "  -h, --help            help for bumpit")
 		fmt.Fprintln(os.Stderr, "      --show-indirect   include indirect Go module dependencies")
-		fmt.Fprintln(os.Stderr, "  -v, --version         print version and exit")
+		fmt.Fprintln(os.Stderr, "  -h, --help            help for update")
 	}
-	flag.Parse()
+	_ = fs.Parse(args)
+	runTUI(ui.New(rootDir(fs.Args()), ui.Config{ShowIndirect: *showIndirect}))
+}
 
-	if *showVersion {
-		fmt.Println("bumpit", buildVersion())
-		return
+func runUnused(args []string) {
+	fs := flag.NewFlagSet("unused", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Scan for unused direct dependencies and remove them interactively")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage:")
+		fmt.Fprintln(os.Stderr, "  bumpit unused [directory]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fmt.Fprintln(os.Stderr, "  -h, --help   help for unused")
 	}
+	_ = fs.Parse(args)
+	runTUI(ui.New(rootDir(fs.Args()), ui.Config{UnusedMode: true}))
+}
 
+func rootDir(args []string) string {
+	if len(args) > 0 {
+		return args[0]
+	}
 	root, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to get working directory: %v\n", err)
 		os.Exit(1)
 	}
-	if flag.NArg() > 0 {
-		root = flag.Arg(0)
-	}
+	return root
+}
 
-	model := ui.New(root, ui.Config{ShowIndirect: *showIndirect})
-
+func runTUI(model tea.Model) {
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error running bumpit: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func printUsage() {
+	fmt.Fprintln(os.Stderr, "bumpit — interactive dependency manager")
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "Usage:")
+	fmt.Fprintln(os.Stderr, "  bumpit <command> [flags] [directory]")
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "Commands:")
+	fmt.Fprintln(os.Stderr, "  update    Show outdated packages and update them interactively")
+	fmt.Fprintln(os.Stderr, "  unused    Scan for unused direct dependencies and remove them")
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "Flags:")
+	fmt.Fprintln(os.Stderr, "  -h, --help      help for bumpit")
+	fmt.Fprintln(os.Stderr, "  -v, --version   print version and exit")
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "Use \"bumpit <command> --help\" for more information about a command.")
 }
 
 func buildVersion() string {
