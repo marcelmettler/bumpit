@@ -28,6 +28,7 @@ bumpit update [directory]    # interactive outdated-package updater
 bumpit unused [directory]    # find and remove unused direct dependencies
 bumpit license [directory]   # audit dependency licenses
 bumpit clean [directory]     # find and delete generated artifact directories
+bumpit css [directory]       # two-way CSS audit: unused selectors and missing definitions
 ```
 
 All commands default to the current directory. Run `bumpit --help` for a full flag listing.
@@ -78,6 +79,28 @@ Handles SPDX compound expressions: `(MIT OR GPL-3.0-or-later)` is treated as per
 **Artifact cleanup.** Walks the project tree and finds all generated or installed directories — `node_modules`, `dist`, `.next`, `.turbo`, `coverage`, and more. Shows each with its disk size, sorted biggest-first so the most impactful targets are at the top. Select with space and press `D` to delete.
 
 Finds: `node_modules`, `dist`, `build`, `out`, `storybook-static`, `.next`, `.nuxt`, `.output`, `.angular`, `.svelte-kit`, `.vite`, `.turbo`, `.cache`, `coverage`, `.nyc_output`.
+
+### `bumpit css`
+
+**Two-way CSS audit.** Checks for problems in both directions:
+
+| Indicator | Meaning |
+|-----------|---------|
+| `~` (orange) | Class defined in a CSS file but never referenced in any template |
+| `?` (red) | Class referenced in a template `class=` attribute but absent from every CSS file |
+
+The `~` direction catches dead CSS you can safely delete. The `?` direction catches typos and stale references — class names that exist in markup but have no matching stylesheet rule.
+
+Scans CSS files: `.css`, `.scss`, `.sass`, `.less`. Scans templates: `.html`, `.jsx`, `.tsx`, `.js`, `.ts`, `.vue`, `.svelte`.
+
+**How references are detected.** Explicit `class="..."` and `className="..."` attributes drive both directions. String literals (`cx('foo')`, `clsx('bar')`, `classList.add('baz')`) are also checked but only for the `~` direction — they would produce too many false positives for the `?` direction since common English words would appear to be missing CSS definitions.
+
+**Limitations:**
+- CSS modules (`.module.css`) are skipped — class names are transformed by the bundler and referenced as `styles.className`, not as string literals.
+- SCSS `&` parent selectors (e.g. `&__child`, `&:hover`) are not resolved — classes composed via `&` may appear as unused even if they are referenced.
+- Tailwind utility classes are not tracked. If a Tailwind config is detected, a warning is shown.
+
+Read-only — `bumpit css` reports findings but does not modify any files.
 
 ## Installation
 
@@ -145,6 +168,13 @@ bumpit clean
 bumpit clean /path/to/project
 ```
 
+### `bumpit css`
+
+```bash
+bumpit css
+bumpit css /path/to/project
+```
+
 ### GitHub authentication
 
 Changelogs are fetched from the GitHub API. Unauthenticated requests are limited to 60 per hour. `bumpit` automatically resolves credentials from your existing machine state — no setup required if you already use the GitHub CLI or have git configured with HTTPS:
@@ -206,6 +236,13 @@ Packages published less than 3 days ago will show `⏳ Nd left` instead of a sta
 2. **Size** — computes total disk usage for each artifact directory
 3. **Sort** — biggest directories first, so the most impactful targets are immediately visible
 4. **Delete** — `D` runs `os.RemoveAll` on selected directories and reports total space freed
+
+### `bumpit css`
+
+1. **Pass 1 (define)** — walks all `.css`/`.scss`/`.sass`/`.less` files, strips comments and `url()` references, extracts every `.classname` selector. Skips `.module.css` files and lines containing `&`.
+2. **Pass 2 (reference)** — walks all template and source files; builds two sets: `broad` (class attrs + string literals, for the `~` direction) and `explicit` (class attrs only with file/line, for the `?` direction). String literals are excluded from `explicit` to avoid false positives from common English words.
+3. **Diff both ways** — `~` = defined in CSS but absent from `broad`; `?` = present in `explicit` but absent from CSS definitions
+4. **Display** — combined scrollable list sorted within each direction by file then line; `/` to filter by name or file
 
 ## Status indicators
 

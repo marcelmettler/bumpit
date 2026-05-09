@@ -19,6 +19,7 @@ go test ./internal/ui/... -run TestDetailEsc   # single test
 ./bumpit unused [directory]
 ./bumpit license [directory]
 ./bumpit clean [directory]
+./bumpit css [directory]
 BUMPIT_DEBUG=1 ./bumpit update    # enables debug log at /tmp/bumpit-debug.log
 
 # Version / help
@@ -35,8 +36,9 @@ BUMPIT_DEBUG=1 ./bumpit update    # enables debug log at /tmp/bumpit-debug.log
 - `unused` path: `stateInit → stateLoading → stateUnusedList → stateRemoving → stateRemoveDone`
 - `license` path: `stateInit → stateLoading → stateLicenseList`
 - `clean` path: `stateInit → stateLoading → stateCleanList → stateCleanDeleting → stateCleanDone`
+- `css` path: `stateLoading → stateCSSList` (bypasses `cmdDetect` — starts CSS scan directly from `Init()`)
 
-`Update()` dispatches key events through `handleKey()` → `updateList()` / `updateDetail()` / `updateUnusedList()` / `updateLicenseList()` / `updateCleanList()`. The active path is determined by the mode flag on `Model` (`unusedMode` / `licenseMode` / `cleanMode`), set from `Config`.
+`Update()` dispatches key events through `handleKey()` → `updateList()` / `updateDetail()` / `updateUnusedList()` / `updateLicenseList()` / `updateCleanList()` / `updateCSSList()`. The active path is determined by the mode flag on `Model` (`unusedMode` / `licenseMode` / `cleanMode` / `cssMode`), set from `Config`.
 
 **Data flow — `update`**:
 1. `cmdDetect()` → `detect.Find()` discovers `pnpm-lock.yaml` and `go.mod` files
@@ -63,10 +65,17 @@ BUMPIT_DEBUG=1 ./bumpit update    # enables debug log at /tmp/bumpit-debug.log
 3. Results are sorted biggest-first; user selects with space and confirms with `D`
 4. `clean.Remove()` calls `os.RemoveAll` for each selected directory and reports total bytes freed
 
+**Data flow — `css`**:
+1. `Init()` detects `cssMode` and calls `cmdScanCSS()` directly — no `cmdDetect()` phase
+2. `css.Scan(root)` does two passes: (a) walks `.css`/`.scss`/`.sass`/`.less` files and extracts class selectors via `\.([a-zA-Z][\w-]*)` after stripping comments and `url()` content; (b) walks template/source files and builds two reference sets: `broad` (class attrs + string literals) and `explicit` (class attrs only with file/line location)
+3. `.module.css` files are skipped (CSS modules obfuscate class names); lines containing `&` are skipped (SCSS parent selectors can't be statically resolved)
+4. `ScanResult.Unused` = defined in CSS but absent from `broad`; `ScanResult.Undefined` = present in `explicit` but absent from CSS definitions
+5. Both sets merged into `cssItems []cssItem` in the model; `cssItem.undefined` flag distinguishes direction; rendered with `~` (orange, unused) and `?` (red, undefined) indicators in a single scrollable list
+
 **Package layout**:
-- `internal/ui/` — all BubblaTea code: `model.go` (state machine), `list.go` (update list view), `detail.go` (changelog detail), `unused.go` (unused list view + remove summary), `license.go` (license audit view), `clean.go` (clean workspace view), `loading.go` (indeterminate progress bar), `styles.go` (lipgloss styles), `debug.go` (gated debug log)
+- `internal/ui/` — all BubblaTea code: `model.go` (state machine), `list.go` (update list view), `detail.go` (changelog detail), `unused.go` (unused list view + remove summary), `license.go` (license audit view), `clean.go` (clean workspace view), `css.go` (CSS unused-class view), `loading.go` (indeterminate progress bar), `styles.go` (lipgloss styles), `debug.go` (gated debug log)
 - `internal/detect/` — finds `pnpm-lock.yaml` and `go.mod` files
-- `internal/pkg/` — shared structs (`PackageUpdate`, `UnusedPackage`, `LicenseInfo`, `LicenseCategory`, `ArtifactDir`); `pnpm/`, `gomod/`, and `clean/` subdirs for each domain
+- `internal/pkg/` — shared structs (`PackageUpdate`, `UnusedPackage`, `LicenseInfo`, `LicenseCategory`, `ArtifactDir`, `CSSClass`); `pnpm/`, `gomod/`, `clean/`, and `css/` subdirs for each domain
 - `internal/changelog/` — `github.go` fetches GitHub releases/CHANGELOG; `changelog.go` orchestrates; `extract.go` parses markdown into `Highlights`
 - `internal/registry/` — npm registry API for publish date and repo URL
 
@@ -90,7 +99,9 @@ BUMPIT_DEBUG=1 ./bumpit update    # enables debug log at /tmp/bumpit-debug.log
 
 **Artifact scanning** (`internal/pkg/clean/clean.go`): `FindArtifacts()` walks the tree with `filepath.WalkDir`, returns `fs.SkipDir` when it hits a known artifact directory name so it never descends into `node_modules` etc. `dirSize()` walks the artifact dir separately to compute total bytes. `FormatSize()` formats bytes to human-readable GB/MB/KB. `Remove()` calls `os.RemoveAll` sequentially and accumulates bytes freed.
 
-**Adding a new command**: (1) add a `*Mode bool` to `Config` and `Model`, (2) add new `state*` constants, (3) add `msg*Done` message types, (4) add `cmd*` methods, (5) add a branch in `msgDetectDone`, (6) handle messages in `Update()`, (7) add a key handler method, (8) add render calls in `View()`, (9) add render functions in a new `internal/ui/<command>.go`, (10) wire up in `main.go`.
+**CSS class scanning** (`internal/pkg/css/css.go`): `Scan(root)` performs two `filepath.WalkDir` passes. Pass 1 extracts CSS class definitions. Pass 2 calls `extractClassRefs(content, relPath)` which returns two maps: `broad` (class attrs + string literals, used for `ScanResult.Unused`) and `explicit` (class attrs only with file/line, used for `ScanResult.Undefined`). String literals are excluded from `explicit` to avoid false positives — common English words would otherwise appear as missing CSS definitions. `.module.css` files and lines containing `&` are skipped. `detectTailwind()` checks for tailwind config files at root. The UI merges both result sets into `[]cssItem` with an `undefined bool` flag; `~` = unused, `?` = undefined.
+
+**Adding a new command**: (1) add a `*Mode bool` to `Config` and `Model`, (2) add new `state*` constants, (3) add `msg*Done` message types, (4) add `cmd*` methods, (5) if it needs package-file detection add a branch in `msgDetectDone`; if not (like `css`) override `Init()` to skip `cmdDetect`, (6) handle messages in `Update()`, (7) add a key handler method, (8) add render calls in `View()`, (9) add render functions in a new `internal/ui/<command>.go`, (10) wire up in `main.go`.
 
 ## Release
 

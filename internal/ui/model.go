@@ -11,6 +11,7 @@ import (
 	"github.com/marcelmettler/bumpit/internal/detect"
 	"github.com/marcelmettler/bumpit/internal/pkg"
 	cleanpkg "github.com/marcelmettler/bumpit/internal/pkg/clean"
+	csspkg "github.com/marcelmettler/bumpit/internal/pkg/css"
 	"github.com/marcelmettler/bumpit/internal/pkg/gomod"
 	"github.com/marcelmettler/bumpit/internal/pkg/pnpm"
 	"github.com/marcelmettler/bumpit/internal/registry"
@@ -34,6 +35,7 @@ const (
 	stateCleanList                   // clean workspace list
 	stateCleanDeleting               // running deletion
 	stateCleanDone                   // deletion complete
+	stateCSSList                     // CSS unused-class audit
 )
 
 // SortMode defines available sort orders.
@@ -121,6 +123,11 @@ type msgCleanDeleteDone struct {
 	err     error
 }
 
+type msgCSSScanDone struct {
+	result *csspkg.ScanResult
+	err    error
+}
+
 // ── Model ─────────────────────────────────────────────────────────────────────
 
 // Config holds startup options passed from the CLI.
@@ -129,6 +136,7 @@ type Config struct {
 	UnusedMode   bool // scan for unused deps instead of outdated
 	LicenseMode  bool // audit dependency licenses
 	CleanMode    bool // find and delete artifact directories
+	CSSMode      bool // audit unused CSS classes
 }
 
 // Model is the bubbletea model for the entire application.
@@ -144,6 +152,7 @@ type Model struct {
 	unusedMode   bool
 	licenseMode  bool
 	cleanMode    bool
+	cssMode      bool
 
 	// Spinner
 	spinnerFrame int
@@ -204,6 +213,14 @@ type Model struct {
 	licenseFilterActive bool
 	licenseSortByName   bool
 	licenseShowAll      bool
+
+	// CSS mode
+	cssResult       *csspkg.ScanResult
+	cssItems        []cssItem // combined filtered list: unused + undefined
+	cssCursor       int
+	cssScroll       int
+	cssFilterQuery  string
+	cssFilterActive bool
 }
 
 // New creates a new Model for the given root directory.
@@ -215,6 +232,7 @@ func New(root string, cfg Config) *Model {
 		unusedMode:            cfg.UnusedMode,
 		licenseMode:           cfg.LicenseMode,
 		cleanMode:             cfg.CleanMode,
+		cssMode:               cfg.CSSMode,
 		state:                 stateInit,
 		minimumReleaseAge:     3 * 24 * time.Hour,
 		changelogFetchedNames: make(map[string]bool),
@@ -231,6 +249,11 @@ func isLoadingState(s appState) bool {
 
 // Init starts the detection phase.
 func (m *Model) Init() tea.Cmd {
+	if m.cssMode {
+		m.state = stateLoading
+		m.statusMsg = "Scanning CSS files..."
+		return tea.Batch(m.cmdScanCSS(), tickCmd())
+	}
 	return tea.Batch(m.cmdDetect(), tickCmd())
 }
 
@@ -560,6 +583,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case msgCSSScanDone:
+		if msg.err != nil {
+			m.state = stateError
+			m.err = msg.err
+			return m, nil
+		}
+		m.cssResult = msg.result
+		m.rebuildCSSFiltered()
+		m.state = stateCSSList
+		return m, nil
+
 	case msgTick:
 		m.spinnerFrame++
 		if isLoadingState(m.state) {
@@ -596,6 +630,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateCleanList(msg)
 	case stateCleanDone:
 		return m, tea.Quit
+	case stateCSSList:
+		return m.updateCSSList(msg)
 	}
 	return m, nil
 }
@@ -807,6 +843,9 @@ func (m *Model) View() string {
 
 	case stateCleanDone:
 		return renderCleanDone(m.cleanFreed, m.cleanRemoved)
+
+	case stateCSSList:
+		return renderCSSList(m)
 
 	case stateRemoving:
 		return renderLoadingScreen(m, spin+"  Removing packages...")
@@ -1081,5 +1120,79 @@ func (m *Model) rebuildUnusedFiltered() {
 	copy(m.unusedFiltered, m.unusedPackages)
 	if m.unusedCursor >= len(m.unusedFiltered) {
 		m.unusedCursor = clampMin(0, len(m.unusedFiltered)-1)
+	}
+}
+
+func (m *Model) cmdScanCSS() tea.Cmd {
+	return func() tea.Msg {
+		result, err := csspkg.Scan(m.root)
+		return msgCSSScanDone{result: result, err: err}
+	}
+}
+
+func (m *Model) updateCSSList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.statusMsg = ""
+
+	if m.cssFilterActive {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.cssFilterActive = false
+			m.cssFilterQuery = ""
+			m.rebuildCSSFiltered()
+		case "enter":
+			m.cssFilterActive = false
+		case "backspace":
+			if len(m.cssFilterQuery) > 0 {
+				m.cssFilterQuery = m.cssFilterQuery[:len(m.cssFilterQuery)-1]
+				m.rebuildCSSFiltered()
+			}
+		default:
+			if msg.Type == tea.KeyRunes {
+				m.cssFilterQuery += string(msg.Runes)
+				m.rebuildCSSFiltered()
+			}
+		}
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "j", "down":
+		if m.cssCursor < len(m.cssItems)-1 {
+			m.cssCursor++
+		}
+	case "k", "up":
+		if m.cssCursor > 0 {
+			m.cssCursor--
+		}
+	case "/":
+		m.cssFilterActive = true
+	}
+	return m, nil
+}
+
+func (m *Model) rebuildCSSFiltered() {
+	if m.cssResult == nil {
+		m.cssItems = nil
+		return
+	}
+	q := strings.ToLower(m.cssFilterQuery)
+	var items []cssItem
+	for _, c := range m.cssResult.Unused {
+		if q == "" || strings.Contains(strings.ToLower(c.Name), q) ||
+			strings.Contains(strings.ToLower(c.File), q) {
+			items = append(items, cssItem{class: c, undefined: false})
+		}
+	}
+	for _, c := range m.cssResult.Undefined {
+		if q == "" || strings.Contains(strings.ToLower(c.Name), q) ||
+			strings.Contains(strings.ToLower(c.File), q) {
+			items = append(items, cssItem{class: c, undefined: true})
+		}
+	}
+	m.cssItems = items
+	if m.cssCursor >= len(m.cssItems) {
+		m.cssCursor = clampMin(0, len(m.cssItems)-1)
 	}
 }

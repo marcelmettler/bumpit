@@ -25,6 +25,8 @@ func main() {
 		runLicense(os.Args[2:])
 	case "clean":
 		runClean(os.Args[2:])
+	case "css":
+		runCSS(os.Args[2:])
 	case "-v", "--version", "version":
 		fmt.Println("bumpit", buildVersion())
 	case "-h", "--help", "help":
@@ -83,6 +85,21 @@ func runLicense(args []string) {
 	runTUI(ui.New(rootDir(fs.Args()), ui.Config{LicenseMode: true}))
 }
 
+func runCSS(args []string) {
+	fs := flag.NewFlagSet("css", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Scan CSS/SCSS files for class selectors that are never referenced in templates")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage:")
+		fmt.Fprintln(os.Stderr, "  bumpit css [directory]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fmt.Fprintln(os.Stderr, "  -h, --help   help for css")
+	}
+	_ = fs.Parse(args)
+	runTUI(ui.New(rootDir(fs.Args()), ui.Config{CSSMode: true}))
+}
+
 func runClean(args []string) {
 	fs := flag.NewFlagSet("clean", flag.ExitOnError)
 	fs.Usage = func() {
@@ -129,6 +146,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  unused     Scan for unused direct dependencies and remove them")
 	fmt.Fprintln(os.Stderr, "  license    Audit dependency licenses and flag copyleft or unknown")
 	fmt.Fprintln(os.Stderr, "  clean      Find and delete generated artifact directories interactively")
+	fmt.Fprintln(os.Stderr, "  css        Find CSS class selectors never referenced in templates")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Flags:")
 	fmt.Fprintln(os.Stderr, "  -h, --help      help for bumpit")

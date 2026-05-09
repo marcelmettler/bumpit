@@ -105,6 +105,13 @@ func (p *PackageUpdate) SetCachedRender(rendered string, width int) {
 	p.renderedWidth = width
 }
 
+// CSSClass represents a CSS class selector defined in a stylesheet.
+type CSSClass struct {
+	Name string
+	File string // relative path to the stylesheet
+	Line int
+}
+
 // ArtifactDir represents a generated or installed directory that can be safely deleted.
 type ArtifactDir struct {
 	Path     string // absolute path
