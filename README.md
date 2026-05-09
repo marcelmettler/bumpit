@@ -29,6 +29,7 @@ bumpit unused [directory]    # find and remove unused direct dependencies
 bumpit license [directory]   # audit dependency licenses
 bumpit clean [directory]     # find and delete generated artifact directories
 bumpit css [directory]       # two-way CSS audit: unused selectors and missing definitions
+bumpit todo [directory]      # list all TODO, FIXME, HACK, and XXX comments
 ```
 
 All commands default to the current directory. Run `bumpit --help` for a full flag listing.
@@ -101,6 +102,19 @@ Scans CSS files: `.css`, `.scss`, `.sass`, `.less`. Scans templates: `.html`, `.
 - Tailwind utility classes are not tracked. If a Tailwind config is detected, a warning is shown.
 
 Read-only — `bumpit css` reports findings but does not modify any files.
+
+### `bumpit todo`
+
+**Tech-debt overview.** Scans every source file in the project and lists all `TODO`, `FIXME`, `HACK`, and `XXX` comments in one navigable list, sorted by file and line.
+
+| Kind | Color | Typical use |
+|------|-------|-------------|
+| `TODO` | blue | Planned work, missing feature |
+| `FIXME` | orange | Known bug or broken code |
+| `HACK` | orange | Workaround that should be cleaned up |
+| `XXX` | red | Dangerous or critical tech debt |
+
+Scans: `.go`, `.js`, `.ts`, `.jsx`, `.tsx`, `.vue`, `.svelte`, `.css`, `.scss`, `.html`, `.yaml`, `.sh`, and more. Filter with `/` to search by kind, file, or comment text. Read-only.
 
 ## Installation
 
@@ -175,6 +189,13 @@ bumpit css
 bumpit css /path/to/project
 ```
 
+### `bumpit todo`
+
+```bash
+bumpit todo
+bumpit todo /path/to/project
+```
+
 ### GitHub authentication
 
 Changelogs are fetched from the GitHub API. Unauthenticated requests are limited to 60 per hour. `bumpit` automatically resolves credentials from your existing machine state — no setup required if you already use the GitHub CLI or have git configured with HTTPS:
@@ -243,6 +264,12 @@ Packages published less than 3 days ago will show `⏳ Nd left` instead of a sta
 2. **Pass 2 (reference)** — walks all template and source files; builds two sets: `broad` (class attrs + string literals, for the `~` direction) and `explicit` (class attrs only with file/line, for the `?` direction). String literals are excluded from `explicit` to avoid false positives from common English words.
 3. **Diff both ways** — `~` = defined in CSS but absent from `broad`; `?` = present in `explicit` but absent from CSS definitions
 4. **Display** — combined scrollable list sorted within each direction by file then line; `/` to filter by name or file
+
+### `bumpit todo`
+
+1. **Scan** — walks all source files matching a broad extension list (`.go`, `.js`/`.ts`, `.vue`, `.svelte`, `.css`/`.scss`, `.html`, `.yaml`, `.sh`, and more); skips `node_modules`, `dist`, `.git`, and other artifact directories
+2. **Match** — per line, applies `\b(TODO|FIXME|HACK|XXX)\b` regex; captures the text following the keyword, strips trailing comment closers (`*/`, `-->`) and `TODO(author):` prefixes
+3. **Display** — read-only list sorted by file then line; color-coded by kind (`TODO` blue, `FIXME`/`HACK` orange, `XXX` red); `/` filters by kind, text, or file
 
 ## Status indicators
 

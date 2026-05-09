@@ -11,7 +11,8 @@ import (
 	"github.com/marcelmettler/bumpit/internal/detect"
 	"github.com/marcelmettler/bumpit/internal/pkg"
 	cleanpkg "github.com/marcelmettler/bumpit/internal/pkg/clean"
-	csspkg "github.com/marcelmettler/bumpit/internal/pkg/css"
+	csspkg  "github.com/marcelmettler/bumpit/internal/pkg/css"
+	todopkg "github.com/marcelmettler/bumpit/internal/pkg/todo"
 	"github.com/marcelmettler/bumpit/internal/pkg/gomod"
 	"github.com/marcelmettler/bumpit/internal/pkg/pnpm"
 	"github.com/marcelmettler/bumpit/internal/registry"
@@ -36,6 +37,7 @@ const (
 	stateCleanDeleting               // running deletion
 	stateCleanDone                   // deletion complete
 	stateCSSList                     // CSS unused-class audit
+	stateTodoList                    // TODO/FIXME/HACK/XXX audit
 )
 
 // SortMode defines available sort orders.
@@ -128,6 +130,11 @@ type msgCSSScanDone struct {
 	err    error
 }
 
+type msgTodoScanDone struct {
+	result *todopkg.ScanResult
+	err    error
+}
+
 // ── Model ─────────────────────────────────────────────────────────────────────
 
 // Config holds startup options passed from the CLI.
@@ -137,6 +144,7 @@ type Config struct {
 	LicenseMode  bool // audit dependency licenses
 	CleanMode    bool // find and delete artifact directories
 	CSSMode      bool // audit unused CSS classes
+	TodoMode     bool // scan for TODO/FIXME/HACK/XXX comments
 }
 
 // Model is the bubbletea model for the entire application.
@@ -153,6 +161,7 @@ type Model struct {
 	licenseMode  bool
 	cleanMode    bool
 	cssMode      bool
+	todoMode     bool
 
 	// Spinner
 	spinnerFrame int
@@ -221,6 +230,14 @@ type Model struct {
 	cssScroll       int
 	cssFilterQuery  string
 	cssFilterActive bool
+
+	// Todo mode
+	todoResult      *todopkg.ScanResult
+	todoFiltered    []*pkg.TodoItem
+	todoCursor      int
+	todoScroll      int
+	todoFilterQuery string
+	todoFilterActive bool
 }
 
 // New creates a new Model for the given root directory.
@@ -233,6 +250,7 @@ func New(root string, cfg Config) *Model {
 		licenseMode:           cfg.LicenseMode,
 		cleanMode:             cfg.CleanMode,
 		cssMode:               cfg.CSSMode,
+		todoMode:              cfg.TodoMode,
 		state:                 stateInit,
 		minimumReleaseAge:     3 * 24 * time.Hour,
 		changelogFetchedNames: make(map[string]bool),
@@ -253,6 +271,11 @@ func (m *Model) Init() tea.Cmd {
 		m.state = stateLoading
 		m.statusMsg = "Scanning CSS files..."
 		return tea.Batch(m.cmdScanCSS(), tickCmd())
+	}
+	if m.todoMode {
+		m.state = stateLoading
+		m.statusMsg = "Scanning for TODO comments..."
+		return tea.Batch(m.cmdScanTodo(), tickCmd())
 	}
 	return tea.Batch(m.cmdDetect(), tickCmd())
 }
@@ -594,6 +617,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = stateCSSList
 		return m, nil
 
+	case msgTodoScanDone:
+		if msg.err != nil {
+			m.state = stateError
+			m.err = msg.err
+			return m, nil
+		}
+		m.todoResult = msg.result
+		m.rebuildTodoFiltered()
+		m.state = stateTodoList
+		return m, nil
+
 	case msgTick:
 		m.spinnerFrame++
 		if isLoadingState(m.state) {
@@ -632,6 +666,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case stateCSSList:
 		return m.updateCSSList(msg)
+	case stateTodoList:
+		return m.updateTodoList(msg)
 	}
 	return m, nil
 }
@@ -846,6 +882,9 @@ func (m *Model) View() string {
 
 	case stateCSSList:
 		return renderCSSList(m)
+
+	case stateTodoList:
+		return renderTodoList(m)
 
 	case stateRemoving:
 		return renderLoadingScreen(m, spin+"  Removing packages...")
@@ -1170,6 +1209,76 @@ func (m *Model) updateCSSList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cssFilterActive = true
 	}
 	return m, nil
+}
+
+func (m *Model) cmdScanTodo() tea.Cmd {
+	return func() tea.Msg {
+		result, err := todopkg.Scan(m.root)
+		return msgTodoScanDone{result: result, err: err}
+	}
+}
+
+func (m *Model) updateTodoList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.statusMsg = ""
+
+	if m.todoFilterActive {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.todoFilterActive = false
+			m.todoFilterQuery = ""
+			m.rebuildTodoFiltered()
+		case "enter":
+			m.todoFilterActive = false
+		case "backspace":
+			if len(m.todoFilterQuery) > 0 {
+				m.todoFilterQuery = m.todoFilterQuery[:len(m.todoFilterQuery)-1]
+				m.rebuildTodoFiltered()
+			}
+		default:
+			if msg.Type == tea.KeyRunes {
+				m.todoFilterQuery += string(msg.Runes)
+				m.rebuildTodoFiltered()
+			}
+		}
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "j", "down":
+		if m.todoCursor < len(m.todoFiltered)-1 {
+			m.todoCursor++
+		}
+	case "k", "up":
+		if m.todoCursor > 0 {
+			m.todoCursor--
+		}
+	case "/":
+		m.todoFilterActive = true
+	}
+	return m, nil
+}
+
+func (m *Model) rebuildTodoFiltered() {
+	if m.todoResult == nil {
+		m.todoFiltered = nil
+		return
+	}
+	q := strings.ToLower(m.todoFilterQuery)
+	var filtered []*pkg.TodoItem
+	for _, item := range m.todoResult.Items {
+		if q == "" ||
+			strings.Contains(strings.ToLower(item.Kind), q) ||
+			strings.Contains(strings.ToLower(item.Text), q) ||
+			strings.Contains(strings.ToLower(item.File), q) {
+			filtered = append(filtered, item)
+		}
+	}
+	m.todoFiltered = filtered
+	if m.todoCursor >= len(m.todoFiltered) {
+		m.todoCursor = clampMin(0, len(m.todoFiltered)-1)
+	}
 }
 
 func (m *Model) rebuildCSSFiltered() {

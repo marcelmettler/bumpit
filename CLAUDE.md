@@ -20,6 +20,7 @@ go test ./internal/ui/... -run TestDetailEsc   # single test
 ./bumpit license [directory]
 ./bumpit clean [directory]
 ./bumpit css [directory]
+./bumpit todo [directory]
 BUMPIT_DEBUG=1 ./bumpit update    # enables debug log at /tmp/bumpit-debug.log
 
 # Version / help
@@ -37,8 +38,9 @@ BUMPIT_DEBUG=1 ./bumpit update    # enables debug log at /tmp/bumpit-debug.log
 - `license` path: `stateInit → stateLoading → stateLicenseList`
 - `clean` path: `stateInit → stateLoading → stateCleanList → stateCleanDeleting → stateCleanDone`
 - `css` path: `stateLoading → stateCSSList` (bypasses `cmdDetect` — starts CSS scan directly from `Init()`)
+- `todo` path: `stateLoading → stateTodoList` (bypasses `cmdDetect` — starts TODO scan directly from `Init()`)
 
-`Update()` dispatches key events through `handleKey()` → `updateList()` / `updateDetail()` / `updateUnusedList()` / `updateLicenseList()` / `updateCleanList()` / `updateCSSList()`. The active path is determined by the mode flag on `Model` (`unusedMode` / `licenseMode` / `cleanMode` / `cssMode`), set from `Config`.
+`Update()` dispatches key events through `handleKey()` → `updateList()` / `updateDetail()` / `updateUnusedList()` / `updateLicenseList()` / `updateCleanList()` / `updateCSSList()` / `updateTodoList()`. The active path is determined by the mode flag on `Model` (`unusedMode` / `licenseMode` / `cleanMode` / `cssMode` / `todoMode`), set from `Config`.
 
 **Data flow — `update`**:
 1. `cmdDetect()` → `detect.Find()` discovers `pnpm-lock.yaml` and `go.mod` files
@@ -72,10 +74,16 @@ BUMPIT_DEBUG=1 ./bumpit update    # enables debug log at /tmp/bumpit-debug.log
 4. `ScanResult.Unused` = defined in CSS but absent from `broad`; `ScanResult.Undefined` = present in `explicit` but absent from CSS definitions
 5. Both sets merged into `cssItems []cssItem` in the model; `cssItem.undefined` flag distinguishes direction; rendered with `~` (orange, unused) and `?` (red, undefined) indicators in a single scrollable list
 
+**Data flow — `todo`**:
+1. `Init()` detects `todoMode` and calls `cmdScanTodo()` directly — no `cmdDetect()` phase
+2. `todo.Scan(root)` walks the tree skipping the same artifact directories as `clean`/`css`; scans a broad set of source extensions
+3. Each file is read line by line; `reKeyword` matches `TODO|FIXME|HACK|XXX`; trailing comment closers and `TODO(author):` patterns are stripped from the captured text
+4. Results sorted by file then line; `rebuildTodoFiltered()` applies the filter query across kind, text, and file path
+
 **Package layout**:
-- `internal/ui/` — all BubblaTea code: `model.go` (state machine), `list.go` (update list view), `detail.go` (changelog detail), `unused.go` (unused list view + remove summary), `license.go` (license audit view), `clean.go` (clean workspace view), `css.go` (CSS unused-class view), `loading.go` (indeterminate progress bar), `styles.go` (lipgloss styles), `debug.go` (gated debug log)
+- `internal/ui/` — all BubblaTea code: `model.go` (state machine), `list.go` (update list view), `detail.go` (changelog detail), `unused.go` (unused list view + remove summary), `license.go` (license audit view), `clean.go` (clean workspace view), `css.go` (CSS unused-class view), `todo.go` (TODO audit view), `loading.go` (indeterminate progress bar), `styles.go` (lipgloss styles), `debug.go` (gated debug log)
 - `internal/detect/` — finds `pnpm-lock.yaml` and `go.mod` files
-- `internal/pkg/` — shared structs (`PackageUpdate`, `UnusedPackage`, `LicenseInfo`, `LicenseCategory`, `ArtifactDir`, `CSSClass`); `pnpm/`, `gomod/`, `clean/`, and `css/` subdirs for each domain
+- `internal/pkg/` — shared structs (`PackageUpdate`, `UnusedPackage`, `LicenseInfo`, `LicenseCategory`, `ArtifactDir`, `CSSClass`, `TodoItem`); `pnpm/`, `gomod/`, `clean/`, `css/`, and `todo/` subdirs for each domain
 - `internal/changelog/` — `github.go` fetches GitHub releases/CHANGELOG; `changelog.go` orchestrates; `extract.go` parses markdown into `Highlights`
 - `internal/registry/` — npm registry API for publish date and repo URL
 
@@ -98,6 +106,8 @@ BUMPIT_DEBUG=1 ./bumpit update    # enables debug log at /tmp/bumpit-debug.log
 **License classification** (`internal/pkg/pnpm/licenses.go`): `classifyLicense()` delegates to `classifySPDX()`, which recursively evaluates SPDX compound expressions. `splitSPDXOp()` splits at the top level only (respects parentheses). OR expressions take the most permissive branch (highest `LicenseCategory` int); AND expressions take the most restrictive (lowest). Leaf identifiers are looked up in three static maps after stripping `-only`/`-or-later`/`+` suffixes and `WITH <exception>` clauses. `LicenseCategory` int ordering: 0=StrongCopyleft, 1=Unknown, 2=WeakCopyleft, 3=Permissive — higher is safer, used directly for sort-ascending-risky-first. To add a license: update the appropriate map.
 
 **Artifact scanning** (`internal/pkg/clean/clean.go`): `FindArtifacts()` walks the tree with `filepath.WalkDir`, returns `fs.SkipDir` when it hits a known artifact directory name so it never descends into `node_modules` etc. `dirSize()` walks the artifact dir separately to compute total bytes. `FormatSize()` formats bytes to human-readable GB/MB/KB. `Remove()` calls `os.RemoveAll` sequentially and accumulates bytes freed.
+
+**TODO scanning** (`internal/pkg/todo/todo.go`): `Scan(root)` walks all source files matching a broad extension set, reads each file line by line with `bufio.Scanner`, and applies `\b(TODO|FIXME|HACK|XXX)\b` to each line. Captures the trailing text, strips comment closers (`*/`, `-->`) and `TODO(author):` prefix patterns. Results sorted by file then line. `internal/ui/todo.go` renders a color-coded list (`TODO` blue, `FIXME`/`HACK` orange, `XXX` red); filter searches kind, text, and file path.
 
 **CSS class scanning** (`internal/pkg/css/css.go`): `Scan(root)` performs two `filepath.WalkDir` passes. Pass 1 extracts CSS class definitions. Pass 2 calls `extractClassRefs(content, relPath)` which returns two maps: `broad` (class attrs + string literals, used for `ScanResult.Unused`) and `explicit` (class attrs only with file/line, used for `ScanResult.Undefined`). String literals are excluded from `explicit` to avoid false positives — common English words would otherwise appear as missing CSS definitions. `.module.css` files and lines containing `&` are skipped. `detectTailwind()` checks for tailwind config files at root. The UI merges both result sets into `[]cssItem` with an `undefined bool` flag; `~` = unused, `?` = undefined.
 

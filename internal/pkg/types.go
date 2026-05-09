@@ -166,6 +166,14 @@ type UnusedPackage struct {
 	Selected bool
 }
 
+// TodoItem represents a TODO/FIXME/HACK/XXX comment found in source code.
+type TodoItem struct {
+	Kind string // "TODO", "FIXME", "HACK", "XXX"
+	Text string // comment text after the keyword
+	File string // relative path
+	Line int
+}
+
 // AgeDisplay returns a human-readable age string.
 func (p *PackageUpdate) AgeDisplay() string {
 	if p.PublishedAt.IsZero() {

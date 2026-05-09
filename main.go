@@ -27,6 +27,8 @@ func main() {
 		runClean(os.Args[2:])
 	case "css":
 		runCSS(os.Args[2:])
+	case "todo":
+		runTodo(os.Args[2:])
 	case "-v", "--version", "version":
 		fmt.Println("bumpit", buildVersion())
 	case "-h", "--help", "help":
@@ -83,6 +85,21 @@ func runLicense(args []string) {
 	}
 	_ = fs.Parse(args)
 	runTUI(ui.New(rootDir(fs.Args()), ui.Config{LicenseMode: true}))
+}
+
+func runTodo(args []string) {
+	fs := flag.NewFlagSet("todo", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Scan source files for TODO, FIXME, HACK, and XXX comments")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage:")
+		fmt.Fprintln(os.Stderr, "  bumpit todo [directory]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fmt.Fprintln(os.Stderr, "  -h, --help   help for todo")
+	}
+	_ = fs.Parse(args)
+	runTUI(ui.New(rootDir(fs.Args()), ui.Config{TodoMode: true}))
 }
 
 func runCSS(args []string) {
@@ -147,6 +164,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  license    Audit dependency licenses and flag copyleft or unknown")
 	fmt.Fprintln(os.Stderr, "  clean      Find and delete generated artifact directories interactively")
 	fmt.Fprintln(os.Stderr, "  css        Find CSS class selectors never referenced in templates")
+	fmt.Fprintln(os.Stderr, "  todo       Scan for TODO, FIXME, HACK, and XXX comments")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Flags:")
 	fmt.Fprintln(os.Stderr, "  -h, --help      help for bumpit")
