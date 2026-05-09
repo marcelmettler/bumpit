@@ -21,6 +21,10 @@ func main() {
 		runUpdate(os.Args[2:])
 	case "unused":
 		runUnused(os.Args[2:])
+	case "license":
+		runLicense(os.Args[2:])
+	case "clean":
+		runClean(os.Args[2:])
 	case "-v", "--version", "version":
 		fmt.Println("bumpit", buildVersion())
 	case "-h", "--help", "help":
@@ -64,6 +68,36 @@ func runUnused(args []string) {
 	runTUI(ui.New(rootDir(fs.Args()), ui.Config{UnusedMode: true}))
 }
 
+func runLicense(args []string) {
+	fs := flag.NewFlagSet("license", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Audit dependency licenses and flag copyleft or unknown licenses")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage:")
+		fmt.Fprintln(os.Stderr, "  bumpit license [directory]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fmt.Fprintln(os.Stderr, "  -h, --help   help for license")
+	}
+	_ = fs.Parse(args)
+	runTUI(ui.New(rootDir(fs.Args()), ui.Config{LicenseMode: true}))
+}
+
+func runClean(args []string) {
+	fs := flag.NewFlagSet("clean", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Find and delete generated artifact directories (node_modules, dist, .next, ...)")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage:")
+		fmt.Fprintln(os.Stderr, "  bumpit clean [directory]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fmt.Fprintln(os.Stderr, "  -h, --help   help for clean")
+	}
+	_ = fs.Parse(args)
+	runTUI(ui.New(rootDir(fs.Args()), ui.Config{CleanMode: true}))
+}
+
 func rootDir(args []string) string {
 	if len(args) > 0 {
 		return args[0]
@@ -85,14 +119,16 @@ func runTUI(model tea.Model) {
 }
 
 func printUsage() {
-	fmt.Fprintln(os.Stderr, "bumpit — interactive dependency manager")
+	fmt.Fprintln(os.Stderr, "bumpit — monorepo chore helper")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Usage:")
 	fmt.Fprintln(os.Stderr, "  bumpit <command> [flags] [directory]")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Commands:")
-	fmt.Fprintln(os.Stderr, "  update    Show outdated packages and update them interactively")
-	fmt.Fprintln(os.Stderr, "  unused    Scan for unused direct dependencies and remove them")
+	fmt.Fprintln(os.Stderr, "  update     Show outdated packages and update them interactively")
+	fmt.Fprintln(os.Stderr, "  unused     Scan for unused direct dependencies and remove them")
+	fmt.Fprintln(os.Stderr, "  license    Audit dependency licenses and flag copyleft or unknown")
+	fmt.Fprintln(os.Stderr, "  clean      Find and delete generated artifact directories interactively")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Flags:")
 	fmt.Fprintln(os.Stderr, "  -h, --help      help for bumpit")

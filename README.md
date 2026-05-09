@@ -1,8 +1,8 @@
 # bumpit
 
-An interactive TUI for updating dependencies — without leaving the terminal.
+A terminal UI for keeping your monorepo in shape.
 
-Instead of running `pnpm outdated`, opening ten GitHub changelog pages, and guessing which updates are safe, `bumpit` gives you a single interface: a searchable, sortable list of outdated packages with changelogs rendered inline, breaking-change warnings, and multi-select batch updates.
+`bumpit` brings the recurring chores of a healthy codebase — updating dependencies, trimming dead weight, auditing licenses — into a single interactive interface. No browser tabs, no context switching, no scripting one-offs.
 
 ```
   Package Updater
@@ -21,7 +21,20 @@ Instead of running `pnpm outdated`, opening ten GitHub changelog pages, and gues
   j/k: navigate  space: select  a: all  enter: detail  /: filter  u: update  s: sort  ?: help  q: quit
 ```
 
+## Commands
+
+```bash
+bumpit update [directory]    # interactive outdated-package updater
+bumpit unused [directory]    # find and remove unused direct dependencies
+bumpit license [directory]   # audit dependency licenses
+bumpit clean [directory]     # find and delete generated artifact directories
+```
+
+All commands default to the current directory. Run `bumpit --help` for a full flag listing.
+
 ## Features
+
+### `bumpit update`
 
 **Changelog in the terminal.** Opens GitHub releases for the full range between your current and latest version. No browser, no tab switching.
 
@@ -39,7 +52,32 @@ Instead of running `pnpm outdated`, opening ten GitHub changelog pages, and gues
 
 **Go modules.** Parses `go list -m -u -json all` output alongside npm packages in a unified list.
 
+### `bumpit unused`
+
 **Unused dependency detection.** Scans your source files, scripts, and tool config files to find direct dependencies that are never referenced. Select and remove them interactively. Understands ecosystem-specific patterns so it won't flag build tools, type definitions, or platform packages that are used without being directly imported.
+
+Ecosystem-aware — will not flag:
+- `@types/*` packages when the corresponding package is installed
+- TypeScript, ESLint plugins/configs, Nx plugins, Capacitor platform packages, Vite/jsdom (as vitest peers), Angular build tooling, commitlint configs
+
+### `bumpit license`
+
+**License audit.** Reads license metadata from locally installed `node_modules` for every direct dependency. Default view shows only packages that need attention, with a plain-English explanation of what each license requires. Press `a` to see all packages.
+
+| Indicator | Commercial use | Open-source obligation |
+|-----------|---------------|------------------------|
+| `✓` Permissive (MIT, ISC, Apache-2.0, BSD-*) | ✓ Free | None — keep the copyright notice; include license files when distributing |
+| `⚠` Weak copyleft (LGPL-*, MPL-2.0) | ✓ Allowed | Only if you *modify the library itself* — using it as a dependency is fine |
+| `✗` Strong copyleft (GPL-*, AGPL-3.0) | ✗ Not without open-sourcing | Distributing (GPL) or serving over a network (AGPL) requires open-sourcing your entire app |
+| `?` Unknown — no license field | ✗ Illegal by default | All rights reserved — contact the author before using |
+
+Handles SPDX compound expressions: `(MIT OR GPL-3.0-or-later)` is treated as permissive (consumer picks MIT). Filter with `/`, toggle sort between risk-first and alphabetical with `s`.
+
+### `bumpit clean`
+
+**Artifact cleanup.** Walks the project tree and finds all generated or installed directories — `node_modules`, `dist`, `.next`, `.turbo`, `coverage`, and more. Shows each with its disk size, sorted biggest-first so the most impactful targets are at the top. Select with space and press `D` to delete.
+
+Finds: `node_modules`, `dist`, `build`, `out`, `storybook-static`, `.next`, `.nuxt`, `.output`, `.angular`, `.svelte-kit`, `.vite`, `.turbo`, `.cache`, `coverage`, `.nyc_output`.
 
 ## Installation
 
@@ -76,15 +114,6 @@ Requires Go 1.22+. For npm packages, `pnpm` must be available in your PATH.
 
 ## Usage
 
-`bumpit` has two commands:
-
-```bash
-bumpit update [directory]   # show outdated packages and update them interactively
-bumpit unused [directory]   # find unused direct dependencies and remove them
-```
-
-Both commands default to the current directory. Run `bumpit --help` for a full flag listing.
-
 ### `bumpit update`
 
 ```bash
@@ -95,16 +124,26 @@ bumpit update --show-indirect   # include indirect Go module dependencies
 
 ### `bumpit unused`
 
-Scans your direct dependencies against source files, `package.json` scripts, and tool config files (`angular.json`, `nx.json`, `.eslintrc.json`, `.commitlintrc`, etc.) to find packages that are never referenced.
-
 ```bash
 bumpit unused
 bumpit unused /path/to/project
 ```
 
-Ecosystem-aware — will not flag:
-- `@types/*` packages when the corresponding package is installed
-- TypeScript, ESLint plugins/configs, Nx plugins, Capacitor platform packages, Vite/jsdom (as vitest peers), Angular build tooling, commitlint configs
+### `bumpit license`
+
+```bash
+bumpit license
+bumpit license /path/to/project
+```
+
+Reads license data from local `node_modules`. Run after `pnpm install` for accurate results. Packages that are listed in `package.json` but not yet installed are shown with a `?` indicator.
+
+### `bumpit clean`
+
+```bash
+bumpit clean
+bumpit clean /path/to/project
+```
 
 ### GitHub authentication
 
@@ -132,44 +171,6 @@ minimum-release-age=3 days
 
 Packages published less than 3 days ago will show `⏳ Nd left` instead of a status. This matches pnpm's own behavior and gives the ecosystem time to catch regressions before you adopt a release.
 
-## Key bindings
-
-### `update` — list view
-
-| Key | Action |
-|-----|--------|
-| `j` / `↓` | Move cursor down |
-| `k` / `↑` | Move cursor up |
-| `space` | Toggle selection |
-| `a` | Select / deselect all visible |
-| `enter` | Open changelog detail |
-| `/` | Filter by name |
-| `s` | Cycle sort order (update type → name → age) |
-| `u` | Update selected packages |
-| `?` | Toggle help overlay |
-| `q` | Quit |
-
-### `update` — detail view
-
-| Key | Action |
-|-----|--------|
-| `esc` | Back to list |
-| `j` / `↓` | Scroll down |
-| `k` / `↑` | Scroll up |
-| `space` | Toggle selection |
-| `u` | Update this package |
-| `q` | Quit |
-
-### `unused` — list view
-
-| Key | Action |
-|-----|--------|
-| `j` / `↓` | Move cursor down |
-| `k` / `↑` | Move cursor up |
-| `space` | Toggle selection |
-| `a` | Select / deselect all visible |
-| `r` | Remove selected packages |
-| `q` | Quit |
 
 ## How it works
 
@@ -189,7 +190,22 @@ Packages published less than 3 days ago will show `⏳ Nd left` instead of a sta
 3. **Scan scripts** — checks `package.json` scripts for package name references (catches CLI tools like `prettier`)
 4. **Scan configs** — reads `angular.json`, `nx.json`, `project.json`, `.eslintrc.json`, `.commitlintrc.json` for executor and parser strings
 5. **Ecosystem rules** — applies per-ecosystem knowledge to skip packages that are used without being imported (build tools, type stubs, platform packages)
-6. **Remove** — runs `pnpm remove <pkg...>` or `go get <mod>@none && go mod tidy` for selected packages
+6. **Remove** — runs `pnpm remove <pkg...>` or `go get mod@none && go mod tidy` for selected packages
+
+### `bumpit license`
+
+1. **Detect** — same file discovery as `update`
+2. **Read** — for each direct dependency in each `package.json`, reads the installed `node_modules/<pkg>/package.json` (checks package-local then workspace-root for hoisted deps)
+3. **Categorise** — parses SPDX expressions including compound forms (`MIT OR GPL-3.0-or-later` → permissive, `MIT AND GPL-3.0` → strong copyleft); maps to one of four risk categories
+4. **Deduplicate** — packages that appear in multiple `package.json` files across a monorepo are shown once
+5. **Display** — default view shows only packages needing attention with plain-English action text; press `a` for the full list
+
+### `bumpit clean`
+
+1. **Scan** — walks the directory tree; when a directory with a known artifact name is found, records it and skips descending into it (so nested `node_modules` inside `node_modules` are not double-counted)
+2. **Size** — computes total disk usage for each artifact directory
+3. **Sort** — biggest directories first, so the most impactful targets are immediately visible
+4. **Delete** — `D` runs `os.RemoveAll` on selected directories and reports total space freed
 
 ## Status indicators
 

@@ -10,6 +10,7 @@ import (
 	"github.com/marcelmettler/bumpit/internal/changelog"
 	"github.com/marcelmettler/bumpit/internal/detect"
 	"github.com/marcelmettler/bumpit/internal/pkg"
+	cleanpkg "github.com/marcelmettler/bumpit/internal/pkg/clean"
 	"github.com/marcelmettler/bumpit/internal/pkg/gomod"
 	"github.com/marcelmettler/bumpit/internal/pkg/pnpm"
 	"github.com/marcelmettler/bumpit/internal/registry"
@@ -29,6 +30,10 @@ const (
 	stateUnusedList                  // unused deps list
 	stateRemoving                    // running removal
 	stateRemoveDone                  // removal complete
+	stateLicenseList                 // license audit list
+	stateCleanList                   // clean workspace list
+	stateCleanDeleting               // running deletion
+	stateCleanDone                   // deletion complete
 )
 
 // SortMode defines available sort orders.
@@ -100,12 +105,30 @@ type msgRemoveDone struct {
 	err     error
 }
 
+type msgLicenseDone struct {
+	packages []*pkg.LicenseInfo
+	err      error
+}
+
+type msgCleanScanDone struct {
+	artifacts []*pkg.ArtifactDir
+	err       error
+}
+
+type msgCleanDeleteDone struct {
+	freed   int64
+	removed []*pkg.ArtifactDir
+	err     error
+}
+
 // ── Model ─────────────────────────────────────────────────────────────────────
 
 // Config holds startup options passed from the CLI.
 type Config struct {
 	ShowIndirect bool // include indirect Go module dependencies
 	UnusedMode   bool // scan for unused deps instead of outdated
+	LicenseMode  bool // audit dependency licenses
+	CleanMode    bool // find and delete artifact directories
 }
 
 // Model is the bubbletea model for the entire application.
@@ -119,6 +142,8 @@ type Model struct {
 	// Config
 	showIndirect bool
 	unusedMode   bool
+	licenseMode  bool
+	cleanMode    bool
 
 	// Spinner
 	spinnerFrame int
@@ -162,6 +187,23 @@ type Model struct {
 	// Remove result
 	removedPackages []*pkg.UnusedPackage
 	removeOutput    string
+
+	// Clean mode
+	cleanArtifacts []*pkg.ArtifactDir
+	cleanCursor    int
+	cleanScroll    int
+	cleanFreed     int64
+	cleanRemoved   []*pkg.ArtifactDir
+
+	// License mode
+	licensePackages     []*pkg.LicenseInfo
+	licenseFiltered     []*pkg.LicenseInfo
+	licenseCursor       int
+	licenseScroll       int
+	licenseFilterQuery  string
+	licenseFilterActive bool
+	licenseSortByName   bool
+	licenseShowAll      bool
 }
 
 // New creates a new Model for the given root directory.
@@ -171,6 +213,8 @@ func New(root string, cfg Config) *Model {
 		root:                  root,
 		showIndirect:          cfg.ShowIndirect,
 		unusedMode:            cfg.UnusedMode,
+		licenseMode:           cfg.LicenseMode,
+		cleanMode:             cfg.CleanMode,
 		state:                 stateInit,
 		minimumReleaseAge:     3 * 24 * time.Hour,
 		changelogFetchedNames: make(map[string]bool),
@@ -182,7 +226,7 @@ func tickCmd() tea.Cmd {
 }
 
 func isLoadingState(s appState) bool {
-	return s == stateInit || s == stateLoading || s == stateUpdating || s == stateRemoving
+	return s == stateInit || s == stateLoading || s == stateUpdating || s == stateRemoving || s == stateCleanDeleting
 }
 
 // Init starts the detection phase.
@@ -356,6 +400,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMsg = fmt.Sprintf("Scanning %d package files for unused dependencies...", len(m.files))
 			return m, m.cmdFindUnused(m.files)
 		}
+		if m.licenseMode {
+			m.statusMsg = fmt.Sprintf("Reading licenses for %d package files...", len(m.files))
+			return m, m.cmdFindLicenses(m.files)
+		}
+		if m.cleanMode {
+			m.statusMsg = "Scanning for artifact directories..."
+			return m, m.cmdScanArtifacts()
+		}
 		m.statusMsg = fmt.Sprintf("Scanning %d package files...", len(m.files))
 		return m, m.cmdFetchPackages(m.files)
 
@@ -476,6 +528,38 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case msgLicenseDone:
+		if msg.err != nil {
+			m.state = stateError
+			m.err = msg.err
+			return m, nil
+		}
+		m.licensePackages = msg.packages
+		m.rebuildLicenseFiltered()
+		m.state = stateLicenseList
+		return m, nil
+
+	case msgCleanScanDone:
+		if msg.err != nil {
+			m.state = stateError
+			m.err = msg.err
+			return m, nil
+		}
+		m.cleanArtifacts = msg.artifacts
+		m.state = stateCleanList
+		return m, nil
+
+	case msgCleanDeleteDone:
+		m.cleanFreed = msg.freed
+		m.cleanRemoved = msg.removed
+		if msg.err != nil {
+			m.state = stateError
+			m.err = msg.err
+		} else {
+			m.state = stateCleanDone
+		}
+		return m, nil
+
 	case msgTick:
 		m.spinnerFrame++
 		if isLoadingState(m.state) {
@@ -505,6 +589,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case stateUnusedList:
 		return m.updateUnusedList(msg)
 	case stateRemoveDone:
+		return m, tea.Quit
+	case stateLicenseList:
+		return m.updateLicenseList(msg)
+	case stateCleanList:
+		return m.updateCleanList(msg)
+	case stateCleanDone:
 		return m, tea.Quit
 	}
 	return m, nil
@@ -706,6 +796,18 @@ func (m *Model) View() string {
 	case stateUnusedList:
 		return renderUnusedList(m)
 
+	case stateLicenseList:
+		return renderLicenseList(m)
+
+	case stateCleanList:
+		return renderCleanList(m)
+
+	case stateCleanDeleting:
+		return renderLoadingScreen(m, spin+"  Deleting selected directories...")
+
+	case stateCleanDone:
+		return renderCleanDone(m.cleanFreed, m.cleanRemoved)
+
 	case stateRemoving:
 		return renderLoadingScreen(m, spin+"  Removing packages...")
 
@@ -803,6 +905,172 @@ func sortUnused(packages []*pkg.UnusedPackage) {
 		a, b := packages[i], packages[j]
 		if a.Source != b.Source {
 			return a.Source < b.Source
+		}
+		return a.Name < b.Name
+	})
+}
+
+func (m *Model) cmdScanArtifacts() tea.Cmd {
+	return func() tea.Msg {
+		artifacts, err := cleanpkg.FindArtifacts(m.root)
+		return msgCleanScanDone{artifacts: artifacts, err: err}
+	}
+}
+
+func (m *Model) cmdDeleteArtifacts(artifacts []*pkg.ArtifactDir) tea.Cmd {
+	return func() tea.Msg {
+		freed, err := cleanpkg.Remove(artifacts)
+		return msgCleanDeleteDone{freed: freed, removed: artifacts, err: err}
+	}
+}
+
+func (m *Model) updateCleanList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.statusMsg = ""
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "j", "down":
+		if m.cleanCursor < len(m.cleanArtifacts)-1 {
+			m.cleanCursor++
+		}
+	case "k", "up":
+		if m.cleanCursor > 0 {
+			m.cleanCursor--
+		}
+	case " ":
+		if len(m.cleanArtifacts) > 0 {
+			m.cleanArtifacts[m.cleanCursor].Selected = !m.cleanArtifacts[m.cleanCursor].Selected
+		}
+	case "a":
+		allSelected := true
+		for _, a := range m.cleanArtifacts {
+			if !a.Selected {
+				allSelected = false
+				break
+			}
+		}
+		for _, a := range m.cleanArtifacts {
+			a.Selected = !allSelected
+		}
+	case "D":
+		sel := selectedArtifacts(m.cleanArtifacts)
+		if len(sel) == 0 {
+			m.statusMsg = "No directories selected. Press SPACE to select."
+		} else {
+			m.state = stateCleanDeleting
+			return m, m.cmdDeleteArtifacts(sel)
+		}
+	}
+	return m, nil
+}
+
+func (m *Model) cmdFindLicenses(files []detect.PackageFile) tea.Cmd {
+	return func() tea.Msg {
+		seen := make(map[string]bool)
+		var all []*pkg.LicenseInfo
+		for _, f := range files {
+			if f.PackageManager != detect.PackageManagerPNPM {
+				continue
+			}
+			pkgs, err := pnpm.FindLicenses(f.Dir, m.root)
+			if err != nil {
+				continue
+			}
+			for _, p := range pkgs {
+				if !seen[p.Name] {
+					seen[p.Name] = true
+					all = append(all, p)
+				}
+			}
+		}
+		sortLicenses(all, false)
+		return msgLicenseDone{packages: all}
+	}
+}
+
+func (m *Model) updateLicenseList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.statusMsg = ""
+
+	if m.licenseFilterActive {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.licenseFilterActive = false
+			m.licenseFilterQuery = ""
+			m.rebuildLicenseFiltered()
+		case "enter":
+			m.licenseFilterActive = false
+		case "backspace":
+			if len(m.licenseFilterQuery) > 0 {
+				m.licenseFilterQuery = m.licenseFilterQuery[:len(m.licenseFilterQuery)-1]
+				m.rebuildLicenseFiltered()
+			}
+		default:
+			if msg.Type == tea.KeyRunes {
+				m.licenseFilterQuery += string(msg.Runes)
+				m.rebuildLicenseFiltered()
+			}
+		}
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "j", "down":
+		if m.licenseCursor < len(m.licenseFiltered)-1 {
+			m.licenseCursor++
+		}
+	case "k", "up":
+		if m.licenseCursor > 0 {
+			m.licenseCursor--
+		}
+	case "a":
+		m.licenseShowAll = !m.licenseShowAll
+		m.licenseCursor = 0
+		m.licenseScroll = 0
+		m.licenseFilterQuery = ""
+		m.rebuildLicenseFiltered()
+	case "/":
+		if m.licenseShowAll {
+			m.licenseFilterActive = true
+		}
+	case "s":
+		if m.licenseShowAll {
+			m.licenseSortByName = !m.licenseSortByName
+			sortLicenses(m.licensePackages, m.licenseSortByName)
+			m.rebuildLicenseFiltered()
+		}
+	}
+	return m, nil
+}
+
+func (m *Model) rebuildLicenseFiltered() {
+	q := strings.ToLower(m.licenseFilterQuery)
+	var filtered []*pkg.LicenseInfo
+	for _, p := range m.licensePackages {
+		// In summary mode show only packages that need attention.
+		if !m.licenseShowAll && p.Category == pkg.LicenseCategoryPermissive {
+			continue
+		}
+		if q == "" || strings.Contains(strings.ToLower(p.Name), q) ||
+			strings.Contains(strings.ToLower(p.License), q) {
+			filtered = append(filtered, p)
+		}
+	}
+	m.licenseFiltered = filtered
+	if m.licenseCursor >= len(m.licenseFiltered) {
+		m.licenseCursor = clampMin(0, len(m.licenseFiltered)-1)
+	}
+}
+
+func sortLicenses(packages []*pkg.LicenseInfo, byName bool) {
+	sort.SliceStable(packages, func(i, j int) bool {
+		a, b := packages[i], packages[j]
+		if byName {
+			return a.Name < b.Name
+		}
+		if a.Category != b.Category {
+			return a.Category < b.Category // risky (low int) first
 		}
 		return a.Name < b.Name
 	})

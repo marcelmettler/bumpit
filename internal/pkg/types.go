@@ -105,6 +105,50 @@ func (p *PackageUpdate) SetCachedRender(rendered string, width int) {
 	p.renderedWidth = width
 }
 
+// ArtifactDir represents a generated or installed directory that can be safely deleted.
+type ArtifactDir struct {
+	Path     string // absolute path
+	RelPath  string // path relative to workspace root, used for display
+	Kind     string // human label: "dependencies", "build output", "cache", etc.
+	Size     int64  // total size in bytes
+	Selected bool
+}
+
+// LicenseCategory classifies the risk level of a license for commercial use.
+type LicenseCategory int
+
+const (
+	LicenseCategoryStrongCopyleft LicenseCategory = iota // GPL-*, AGPL-*
+	LicenseCategoryUnknown                               // missing or unrecognised
+	LicenseCategoryWeakCopyleft                          // LGPL-*, MPL-2.0
+	LicenseCategoryPermissive                            // MIT, ISC, Apache-2.0, BSD-*
+)
+
+func (c LicenseCategory) Label() string {
+	switch c {
+	case LicenseCategoryPermissive:
+		return "permissive"
+	case LicenseCategoryWeakCopyleft:
+		return "weak copyleft"
+	case LicenseCategoryStrongCopyleft:
+		return "strong copyleft"
+	default:
+		return "unknown"
+	}
+}
+
+// LicenseInfo holds license information for a single installed dependency.
+type LicenseInfo struct {
+	Name     string
+	Version  string
+	License  string          // raw SPDX expression from package.json; "" if not installed
+	Category LicenseCategory
+	Dir      string
+	DirName  string
+	Source   string // "npm" | "go"
+	DepType  DepType
+}
+
 // UnusedPackage holds information about a direct dependency not imported anywhere in the project.
 type UnusedPackage struct {
 	Name     string
