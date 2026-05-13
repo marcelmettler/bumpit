@@ -14,6 +14,7 @@ import (
 	csspkg   "github.com/marcelmettler/bumpit/internal/pkg/css"
 	envpkg   "github.com/marcelmettler/bumpit/internal/pkg/env"
 	i18npkg  "github.com/marcelmettler/bumpit/internal/pkg/i18n"
+	pinpkg   "github.com/marcelmettler/bumpit/internal/pkg/pin"
 	todopkg  "github.com/marcelmettler/bumpit/internal/pkg/todo"
 	"github.com/marcelmettler/bumpit/internal/pkg/gomod"
 	"github.com/marcelmettler/bumpit/internal/pkg/pnpm"
@@ -42,6 +43,10 @@ const (
 	stateTodoList                    // TODO/FIXME/HACK/XXX audit
 	stateI18nList                    // i18n key audit
 	stateEnvList                     // .env.example audit
+	stateAuditList                   // security vulnerability audit
+	statePinList                     // unpinned dependency audit
+	statePinning                     // writing exact versions to package.json
+	statePinDone                     // pin complete
 )
 
 // SortMode defines available sort orders.
@@ -149,6 +154,22 @@ type msgEnvScanDone struct {
 	err    error
 }
 
+type msgAuditFullDone struct {
+	result *pkg.AuditResult
+	err    error
+}
+
+type msgPinScanDone struct {
+	deps []*pkg.UnpinnedDep
+	err  error
+}
+
+type msgPinDone struct {
+	count  int
+	pinned []*pkg.UnpinnedDep
+	err    error
+}
+
 // ── Model ─────────────────────────────────────────────────────────────────────
 
 // Config holds startup options passed from the CLI.
@@ -161,6 +182,8 @@ type Config struct {
 	TodoMode     bool // scan for TODO/FIXME/HACK/XXX comments
 	I18nMode     bool // audit i18n translation keys
 	EnvMode      bool // audit .env.example variables
+	AuditMode    bool // security vulnerability audit
+	PinMode      bool // find and pin unpinned dependencies
 }
 
 // Model is the bubbletea model for the entire application.
@@ -180,6 +203,8 @@ type Model struct {
 	todoMode     bool
 	i18nMode     bool
 	envMode      bool
+	auditMode    bool
+	pinMode      bool
 
 	// Spinner
 	spinnerFrame int
@@ -272,6 +297,21 @@ type Model struct {
 	envScroll       int
 	envFilterQuery  string
 	envFilterActive bool
+
+	// audit mode
+	auditResult      *pkg.AuditResult
+	auditFiltered    []*pkg.Vuln
+	auditCursor      int
+	auditScroll      int
+	auditFilterQuery  string
+	auditFilterActive bool
+
+	// pin mode
+	pinDeps    []*pkg.UnpinnedDep
+	pinFiltered []*pkg.UnpinnedDep
+	pinCursor  int
+	pinScroll  int
+	pinnedDeps []*pkg.UnpinnedDep
 }
 
 // New creates a new Model for the given root directory.
@@ -287,6 +327,8 @@ func New(root string, cfg Config) *Model {
 		todoMode:              cfg.TodoMode,
 		i18nMode:              cfg.I18nMode,
 		envMode:               cfg.EnvMode,
+		auditMode:             cfg.AuditMode,
+		pinMode:               cfg.PinMode,
 		state:                 stateInit,
 		minimumReleaseAge:     3 * 24 * time.Hour,
 		changelogFetchedNames: make(map[string]bool),
@@ -298,7 +340,7 @@ func tickCmd() tea.Cmd {
 }
 
 func isLoadingState(s appState) bool {
-	return s == stateInit || s == stateLoading || s == stateUpdating || s == stateRemoving || s == stateCleanDeleting
+	return s == stateInit || s == stateLoading || s == stateUpdating || s == stateRemoving || s == stateCleanDeleting || s == statePinning
 }
 
 // Init starts the detection phase.
@@ -322,6 +364,16 @@ func (m *Model) Init() tea.Cmd {
 		m.state = stateLoading
 		m.statusMsg = "Scanning .env files and source references..."
 		return tea.Batch(m.cmdScanEnv(), tickCmd())
+	}
+	if m.auditMode {
+		m.state = stateLoading
+		m.statusMsg = "Running security audit..."
+		return tea.Batch(m.cmdScanAudit(), tickCmd())
+	}
+	if m.pinMode {
+		m.state = stateLoading
+		m.statusMsg = "Scanning package.json files for unpinned dependencies..."
+		return tea.Batch(m.cmdScanPin(), tickCmd())
 	}
 	return tea.Batch(m.cmdDetect(), tickCmd())
 }
@@ -696,6 +748,38 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = stateEnvList
 		return m, nil
 
+	case msgAuditFullDone:
+		if msg.err != nil {
+			m.state = stateError
+			m.err = msg.err
+			return m, nil
+		}
+		m.auditResult = msg.result
+		m.rebuildAuditFiltered()
+		m.state = stateAuditList
+		return m, nil
+
+	case msgPinScanDone:
+		if msg.err != nil {
+			m.state = stateError
+			m.err = msg.err
+			return m, nil
+		}
+		m.pinDeps = msg.deps
+		m.pinFiltered = msg.deps
+		m.state = statePinList
+		return m, nil
+
+	case msgPinDone:
+		m.pinnedDeps = msg.pinned
+		if msg.err != nil {
+			m.state = stateError
+			m.err = msg.err
+		} else {
+			m.state = statePinDone
+		}
+		return m, nil
+
 	case msgTick:
 		m.spinnerFrame++
 		if isLoadingState(m.state) {
@@ -740,6 +824,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateI18nList(msg)
 	case stateEnvList:
 		return m.updateEnvList(msg)
+	case stateAuditList:
+		return m.updateAuditList(msg)
+	case statePinList:
+		return m.updatePinList(msg)
+	case statePinDone:
+		return m, tea.Quit
 	}
 	return m, nil
 }
@@ -963,6 +1053,18 @@ func (m *Model) View() string {
 
 	case stateEnvList:
 		return renderEnvList(m)
+
+	case stateAuditList:
+		return renderAuditList(m)
+
+	case statePinList:
+		return renderPinList(m)
+
+	case statePinning:
+		return renderLoadingScreen(m, spin+"  Pinning selected dependencies...")
+
+	case statePinDone:
+		return renderPinDone(len(m.pinnedDeps), m.pinnedDeps)
 
 	case stateRemoving:
 		return renderLoadingScreen(m, spin+"  Removing packages...")
@@ -1505,6 +1607,140 @@ func (m *Model) rebuildEnvFiltered() {
 	if m.envCursor >= len(m.envItems) {
 		m.envCursor = clampMin(0, len(m.envItems)-1)
 	}
+}
+
+func (m *Model) cmdScanAudit() tea.Cmd {
+	return func() tea.Msg {
+		result, err := pnpm.Audit(m.root)
+		return msgAuditFullDone{result: result, err: err}
+	}
+}
+
+func (m *Model) updateAuditList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.statusMsg = ""
+
+	if m.auditFilterActive {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.auditFilterActive = false
+			m.auditFilterQuery = ""
+			m.rebuildAuditFiltered()
+		case "enter":
+			m.auditFilterActive = false
+		case "backspace":
+			if len(m.auditFilterQuery) > 0 {
+				m.auditFilterQuery = m.auditFilterQuery[:len(m.auditFilterQuery)-1]
+				m.rebuildAuditFiltered()
+			}
+		default:
+			if msg.Type == tea.KeyRunes {
+				m.auditFilterQuery += string(msg.Runes)
+				m.rebuildAuditFiltered()
+			}
+		}
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "j", "down":
+		if m.auditCursor < len(m.auditFiltered)-1 {
+			m.auditCursor++
+		}
+	case "k", "up":
+		if m.auditCursor > 0 {
+			m.auditCursor--
+		}
+	case "/":
+		m.auditFilterActive = true
+	}
+	return m, nil
+}
+
+func (m *Model) rebuildAuditFiltered() {
+	if m.auditResult == nil {
+		m.auditFiltered = nil
+		return
+	}
+	q := strings.ToLower(m.auditFilterQuery)
+	var filtered []*pkg.Vuln
+	for _, v := range m.auditResult.Vulns {
+		if q == "" ||
+			strings.Contains(strings.ToLower(v.PackageName), q) ||
+			strings.Contains(strings.ToLower(v.Severity), q) ||
+			strings.Contains(strings.ToLower(v.Title), q) {
+			filtered = append(filtered, v)
+		}
+	}
+	m.auditFiltered = filtered
+	if m.auditCursor >= len(m.auditFiltered) {
+		m.auditCursor = clampMin(0, len(m.auditFiltered)-1)
+	}
+}
+
+func (m *Model) cmdScanPin() tea.Cmd {
+	return func() tea.Msg {
+		deps, err := pinpkg.Scan(m.root)
+		return msgPinScanDone{deps: deps, err: err}
+	}
+}
+
+func (m *Model) cmdRunPin(deps []*pkg.UnpinnedDep) tea.Cmd {
+	return func() tea.Msg {
+		count, err := pinpkg.Pin(m.root, deps)
+		return msgPinDone{count: count, pinned: deps, err: err}
+	}
+}
+
+func (m *Model) updatePinList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.statusMsg = ""
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "j", "down":
+		if m.pinCursor < len(m.pinFiltered)-1 {
+			m.pinCursor++
+		}
+	case "k", "up":
+		if m.pinCursor > 0 {
+			m.pinCursor--
+		}
+	case " ":
+		if len(m.pinFiltered) > 0 {
+			m.pinFiltered[m.pinCursor].Selected = !m.pinFiltered[m.pinCursor].Selected
+		}
+	case "a":
+		allSelected := true
+		for _, d := range m.pinFiltered {
+			if !d.Selected {
+				allSelected = false
+				break
+			}
+		}
+		for _, d := range m.pinFiltered {
+			d.Selected = !allSelected
+		}
+	case "p":
+		selected := selectedPinDeps(m.pinDeps)
+		if len(selected) == 0 {
+			m.statusMsg = "No packages selected. Press SPACE to select."
+		} else {
+			m.state = statePinning
+			return m, m.cmdRunPin(selected)
+		}
+	}
+	return m, nil
+}
+
+func selectedPinDeps(deps []*pkg.UnpinnedDep) []*pkg.UnpinnedDep {
+	var sel []*pkg.UnpinnedDep
+	for _, d := range deps {
+		if d.Selected {
+			sel = append(sel, d)
+		}
+	}
+	return sel
 }
 
 func (m *Model) rebuildCSSFiltered() {

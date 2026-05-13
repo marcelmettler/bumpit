@@ -32,10 +32,11 @@ func (k UpdateKind) String() string {
 type DepType string
 
 const (
-	DepDependencies     DepType = "dep"
-	DepDevDependencies  DepType = "devDep"
-	DepPeerDependencies DepType = "peer"
-	DepIndirect         DepType = "indirect"
+	DepDependencies          DepType = "dep"
+	DepDevDependencies       DepType = "devDep"
+	DepPeerDependencies      DepType = "peer"
+	DepIndirect              DepType = "indirect"
+	DepOptionalDependencies  DepType = "optional"
 )
 
 // Highlights holds key information extracted from changelog markdown sections.
@@ -178,6 +179,46 @@ type I18nKey struct {
 	Key  string // dot-notation key, e.g. "common.save"
 	File string // relative path
 	Line int    // 0 for locale file entries (JSON line numbers not tracked)
+}
+
+// Vuln holds a single security advisory from pnpm audit.
+type Vuln struct {
+	ID                 int
+	Title              string
+	Severity           string // "critical", "high", "moderate", "low", "info"
+	PackageName        string
+	InstalledVersion   string
+	VulnerableVersions string
+	PatchedVersions    string
+	Recommendation     string
+	CVEs               []string
+	URL                string
+	Paths              []string // dependency paths, e.g. ["lodash", "mocha>lodash"]
+	Fixable            bool     // a patched version exists
+	IsDirect           bool     // the vulnerable package is a direct dependency
+}
+
+// AuditResult holds the output of a full pnpm security audit.
+type AuditResult struct {
+	Vulns    []*Vuln
+	Critical int
+	High     int
+	Moderate int
+	Low      int
+	Info     int
+}
+
+// UnpinnedDep represents a dependency using a ^ or ~ version range in package.json.
+type UnpinnedDep struct {
+	Name     string
+	Version  string  // raw spec, e.g. "^18.2.0"
+	Pinned   string  // exact version, e.g. "18.2.0"
+	File     string  // relative path to package.json
+	Dir      string  // absolute dir path
+	DirName  string
+	Section  string  // JSON key: "dependencies", "devDependencies", etc.
+	DepType  DepType
+	Selected bool
 }
 
 // TodoItem represents a TODO/FIXME/HACK/XXX comment found in source code.

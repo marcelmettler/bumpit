@@ -3,9 +3,10 @@ package ui
 import "github.com/charmbracelet/lipgloss"
 
 var (
-	colorMajor   = lipgloss.Color("#FF4444")
-	colorMinor   = lipgloss.Color("#FFAA00")
-	colorPatch   = lipgloss.Color("#44FF88")
+	colorMajor    = lipgloss.Color("#FF4444")
+	colorCritical = lipgloss.Color("#FF00AA")
+	colorMinor    = lipgloss.Color("#FFAA00")
+	colorPatch    = lipgloss.Color("#44FF88")
 	colorBreaking = lipgloss.Color("#FF2222")
 	colorHeader  = lipgloss.Color("#5599FF")
 	colorMuted   = lipgloss.Color("#888888")
@@ -13,6 +14,10 @@ var (
 	colorCursor  = lipgloss.Color("#4477AA")
 	colorWarning = lipgloss.Color("#FF8800")
 	colorGreen   = lipgloss.Color("#44BB66")
+
+	styleCritical = lipgloss.NewStyle().
+			Foreground(colorCritical).
+			Bold(true)
 
 	styleMajor = lipgloss.NewStyle().
 			Foreground(colorMajor).

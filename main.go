@@ -33,6 +33,10 @@ func main() {
 		runI18n(os.Args[2:])
 	case "env":
 		runEnv(os.Args[2:])
+	case "audit":
+		runAudit(os.Args[2:])
+	case "pin":
+		runPin(os.Args[2:])
 	case "-v", "--version", "version":
 		fmt.Println("bumpit", buildVersion())
 	case "-h", "--help", "help":
@@ -89,6 +93,36 @@ func runLicense(args []string) {
 	}
 	_ = fs.Parse(args)
 	runTUI(ui.New(rootDir(fs.Args()), ui.Config{LicenseMode: true}))
+}
+
+func runAudit(args []string) {
+	fs := flag.NewFlagSet("audit", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Run a security audit and display vulnerabilities with fix availability")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage:")
+		fmt.Fprintln(os.Stderr, "  bumpit audit [directory]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fmt.Fprintln(os.Stderr, "  -h, --help   help for audit")
+	}
+	_ = fs.Parse(args)
+	runTUI(ui.New(rootDir(fs.Args()), ui.Config{AuditMode: true}))
+}
+
+func runPin(args []string) {
+	fs := flag.NewFlagSet("pin", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Find dependencies using ^ or ~ version ranges and pin them to exact versions")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage:")
+		fmt.Fprintln(os.Stderr, "  bumpit pin [directory]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fmt.Fprintln(os.Stderr, "  -h, --help   help for pin")
+	}
+	_ = fs.Parse(args)
+	runTUI(ui.New(rootDir(fs.Args()), ui.Config{PinMode: true}))
 }
 
 func runEnv(args []string) {
@@ -205,6 +239,8 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  todo       Scan for TODO, FIXME, HACK, and XXX comments")
 	fmt.Fprintln(os.Stderr, "  i18n       Audit translation keys: unused locale keys and undefined references")
 	fmt.Fprintln(os.Stderr, "  env        Audit .env.example vars: unused vars and undefined source references")
+	fmt.Fprintln(os.Stderr, "  audit      Run security audit and show vulnerabilities with fix availability")
+	fmt.Fprintln(os.Stderr, "  pin        Find ^ and ~ version ranges and pin them to exact versions")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Flags:")
 	fmt.Fprintln(os.Stderr, "  -h, --help      help for bumpit")
