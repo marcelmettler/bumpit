@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/marcelmettler/bumpit/internal/pkg"
+	"github.com/marcelmettler/chorekit/internal/pkg"
 )
 
 func newDetailModel() *Model {

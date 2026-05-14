@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/marcelmettler/bumpit/internal/pkg"
-	"github.com/marcelmettler/bumpit/internal/pkg/clean"
+	"github.com/marcelmettler/chorekit/internal/pkg"
+	"github.com/marcelmettler/chorekit/internal/pkg/clean"
 )
 
 func renderCleanList(m *Model) string {

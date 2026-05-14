@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/marcelmettler/bumpit/internal/pkg"
+	"github.com/marcelmettler/chorekit/internal/pkg"
 )
 
 // renderList renders the main list view.

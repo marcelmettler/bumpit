@@ -25,15 +25,15 @@ jobs:
           for platform in $platforms; do
             GOOS="${platform%/*}"
             GOARCH="${platform#*/}"
-            name="bumpit_${GOOS}_${GOARCH}"
+            name="chorekit_${GOOS}_${GOARCH}"
             if [ "$GOOS" = "windows" ]; then
-              GOOS=$GOOS GOARCH=$GOARCH go build -o bumpit.exe .
-              zip "${name}.zip" bumpit.exe
-              rm bumpit.exe
+              GOOS=$GOOS GOARCH=$GOARCH go build -o chorekit.exe .
+              zip "${name}.zip" chorekit.exe
+              rm chorekit.exe
             else
-              GOOS=$GOOS GOARCH=$GOARCH go build -o bumpit .
-              tar -czf "${name}.tar.gz" bumpit
-              rm bumpit
+              GOOS=$GOOS GOARCH=$GOARCH go build -o chorekit .
+              tar -czf "${name}.tar.gz" chorekit
+              rm chorekit
             fi
           done
 

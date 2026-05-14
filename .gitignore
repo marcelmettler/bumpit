@@ -1,5 +1,5 @@
 # Compiled binary
-bumpit
+chorekit
 
 # Go build cache
 *.test
@@ -14,5 +14,5 @@ bumpit
 *.swp
 *.swo
 
-# Debug log (set BUMPIT_DEBUG=1 to enable)
-/tmp/bumpit-debug.log
+# Debug log (set CHOREKIT_DEBUG=1 to enable)
+/tmp/chorekit-debug.log

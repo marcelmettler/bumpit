@@ -6,8 +6,8 @@ echo "==> Running go mod tidy..."
 go mod tidy
 
 echo "==> Building..."
-go build -o bumpit .
+go build -o chorekit .
 
-echo "==> Build successful! Binary: ./bumpit"
+echo "==> Build successful! Binary: ./chorekit"
 echo ""
-echo "Run: ./bumpit [directory]"
+echo "Run: ./chorekit [directory]"

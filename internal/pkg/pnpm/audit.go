@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/marcelmettler/bumpit/internal/pkg"
+	"github.com/marcelmettler/chorekit/internal/pkg"
 )
 
 type auditJSON struct {

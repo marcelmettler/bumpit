@@ -1,4 +1,4 @@
-module github.com/marcelmettler/bumpit
+module github.com/marcelmettler/chorekit
 
 go 1.22.0
 

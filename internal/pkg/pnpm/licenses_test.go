@@ -3,7 +3,7 @@ package pnpm
 import (
 	"testing"
 
-	"github.com/marcelmettler/bumpit/internal/pkg"
+	"github.com/marcelmettler/chorekit/internal/pkg"
 )
 
 func TestClassifyLicense(t *testing.T) {

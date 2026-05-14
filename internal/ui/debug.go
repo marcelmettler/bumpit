@@ -9,10 +9,10 @@ import (
 var debugLog *os.File
 
 func initDebug() {
-	if os.Getenv("BUMPIT_DEBUG") == "" {
+	if os.Getenv("CHOREKIT_DEBUG") == "" {
 		return
 	}
-	f, err := os.Create("/tmp/bumpit-debug.log")
+	f, err := os.Create("/tmp/chorekit-debug.log")
 	if err == nil {
 		debugLog = f
 	}

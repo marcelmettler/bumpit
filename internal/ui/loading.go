@@ -58,7 +58,7 @@ func renderLoadingScreen(m *Model, label string) string {
 	for i := 0; i < topPad; i++ {
 		sb.WriteByte('\n')
 	}
-	sb.WriteString(styleHeader.Render("  bumpit") + "\n\n")
+	sb.WriteString(styleHeader.Render("  chorekit") + "\n\n")
 	sb.WriteString(styleMuted.Render("  " + string(bar)) + "\n\n")
 	sb.WriteString(styleMuted.Render("  " + label) + "\n")
 

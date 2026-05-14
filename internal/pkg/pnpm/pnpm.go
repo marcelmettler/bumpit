@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/marcelmettler/bumpit/internal/detect"
-	"github.com/marcelmettler/bumpit/internal/pkg"
+	"github.com/marcelmettler/chorekit/internal/detect"
+	"github.com/marcelmettler/chorekit/internal/pkg"
 )
 
 // validPackageName matches npm package names: optional @scope/name or plain name.

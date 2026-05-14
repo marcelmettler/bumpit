@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/marcelmettler/bumpit/internal/pkg"
+	"github.com/marcelmettler/chorekit/internal/pkg"
 )
 
 var skipDirs = map[string]bool{

@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/marcelmettler/bumpit/internal/detect"
-	"github.com/marcelmettler/bumpit/internal/pkg"
+	"github.com/marcelmettler/chorekit/internal/detect"
+	"github.com/marcelmettler/chorekit/internal/pkg"
 )
 
 // installedPkgJSON is the subset of a node_modules package.json used for licenses.

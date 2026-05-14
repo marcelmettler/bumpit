@@ -3,7 +3,7 @@ package pnpm
 import (
 	"testing"
 
-	"github.com/marcelmettler/bumpit/internal/pkg"
+	"github.com/marcelmettler/chorekit/internal/pkg"
 )
 
 // makeCtx builds a depCtx suitable for evalDep tests.

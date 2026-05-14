@@ -7,7 +7,7 @@ import (
 	"runtime/debug"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/marcelmettler/bumpit/internal/ui"
+	"github.com/marcelmettler/chorekit/internal/ui"
 )
 
 func main() {
@@ -38,11 +38,11 @@ func main() {
 	case "pin":
 		runPin(os.Args[2:])
 	case "-v", "--version", "version":
-		fmt.Println("bumpit", buildVersion())
+		fmt.Println("chorekit", buildVersion())
 	case "-h", "--help", "help":
 		printUsage()
 	default:
-		fmt.Fprintf(os.Stderr, "bumpit: unknown command %q\n\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "chorekit: unknown command %q\n\n", os.Args[1])
 		printUsage()
 		os.Exit(1)
 	}
@@ -55,7 +55,7 @@ func runUpdate(args []string) {
 		fmt.Fprintln(os.Stderr, "Show outdated packages and update them interactively")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Usage:")
-		fmt.Fprintln(os.Stderr, "  bumpit update [flags] [directory]")
+		fmt.Fprintln(os.Stderr, "  chorekit update [flags] [directory]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fmt.Fprintln(os.Stderr, "      --show-indirect   include indirect Go module dependencies")
@@ -71,7 +71,7 @@ func runUnused(args []string) {
 		fmt.Fprintln(os.Stderr, "Scan for unused direct dependencies and remove them interactively")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Usage:")
-		fmt.Fprintln(os.Stderr, "  bumpit unused [directory]")
+		fmt.Fprintln(os.Stderr, "  chorekit unused [directory]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fmt.Fprintln(os.Stderr, "  -h, --help   help for unused")
@@ -86,7 +86,7 @@ func runLicense(args []string) {
 		fmt.Fprintln(os.Stderr, "Audit dependency licenses and flag copyleft or unknown licenses")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Usage:")
-		fmt.Fprintln(os.Stderr, "  bumpit license [directory]")
+		fmt.Fprintln(os.Stderr, "  chorekit license [directory]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fmt.Fprintln(os.Stderr, "  -h, --help   help for license")
@@ -101,7 +101,7 @@ func runAudit(args []string) {
 		fmt.Fprintln(os.Stderr, "Run a security audit and display vulnerabilities with fix availability")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Usage:")
-		fmt.Fprintln(os.Stderr, "  bumpit audit [directory]")
+		fmt.Fprintln(os.Stderr, "  chorekit audit [directory]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fmt.Fprintln(os.Stderr, "  -h, --help   help for audit")
@@ -116,7 +116,7 @@ func runPin(args []string) {
 		fmt.Fprintln(os.Stderr, "Find dependencies using ^ or ~ version ranges and pin them to exact versions")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Usage:")
-		fmt.Fprintln(os.Stderr, "  bumpit pin [directory]")
+		fmt.Fprintln(os.Stderr, "  chorekit pin [directory]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fmt.Fprintln(os.Stderr, "  -h, --help   help for pin")
@@ -131,7 +131,7 @@ func runEnv(args []string) {
 		fmt.Fprintln(os.Stderr, "Audit environment variables: find unused .env.example vars and undefined source references")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Usage:")
-		fmt.Fprintln(os.Stderr, "  bumpit env [directory]")
+		fmt.Fprintln(os.Stderr, "  chorekit env [directory]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Expects .env.example, .env.sample, .env.template, .env.defaults, or .env.schema files.")
 		fmt.Fprintln(os.Stderr, "")
@@ -148,7 +148,7 @@ func runI18n(args []string) {
 		fmt.Fprintln(os.Stderr, "Audit translation keys: find unused locale keys and undefined source references")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Usage:")
-		fmt.Fprintln(os.Stderr, "  bumpit i18n [directory]")
+		fmt.Fprintln(os.Stderr, "  chorekit i18n [directory]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Expects JSON locale files inside a directory named locales/, i18n/, translations/, or lang/.")
 		fmt.Fprintln(os.Stderr, "")
@@ -165,7 +165,7 @@ func runTodo(args []string) {
 		fmt.Fprintln(os.Stderr, "Scan source files for TODO, FIXME, HACK, and XXX comments")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Usage:")
-		fmt.Fprintln(os.Stderr, "  bumpit todo [directory]")
+		fmt.Fprintln(os.Stderr, "  chorekit todo [directory]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fmt.Fprintln(os.Stderr, "  -h, --help   help for todo")
@@ -180,7 +180,7 @@ func runCSS(args []string) {
 		fmt.Fprintln(os.Stderr, "Scan CSS/SCSS files for class selectors that are never referenced in templates")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Usage:")
-		fmt.Fprintln(os.Stderr, "  bumpit css [directory]")
+		fmt.Fprintln(os.Stderr, "  chorekit css [directory]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fmt.Fprintln(os.Stderr, "  -h, --help   help for css")
@@ -195,7 +195,7 @@ func runClean(args []string) {
 		fmt.Fprintln(os.Stderr, "Find and delete generated artifact directories (node_modules, dist, .next, ...)")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Usage:")
-		fmt.Fprintln(os.Stderr, "  bumpit clean [directory]")
+		fmt.Fprintln(os.Stderr, "  chorekit clean [directory]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fmt.Fprintln(os.Stderr, "  -h, --help   help for clean")
@@ -219,16 +219,16 @@ func rootDir(args []string) string {
 func runTUI(model tea.Model) {
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error running bumpit: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error running chorekit: %v\n", err)
 		os.Exit(1)
 	}
 }
 
 func printUsage() {
-	fmt.Fprintln(os.Stderr, "bumpit — monorepo chore helper")
+	fmt.Fprintln(os.Stderr, "chorekit — a tidy toolkit for keeping your codebase in shape")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Usage:")
-	fmt.Fprintln(os.Stderr, "  bumpit <command> [flags] [directory]")
+	fmt.Fprintln(os.Stderr, "  chorekit <command> [flags] [directory]")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Commands:")
 	fmt.Fprintln(os.Stderr, "  update     Show outdated packages and update them interactively")
@@ -243,10 +243,10 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  pin        Find ^ and ~ version ranges and pin them to exact versions")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Flags:")
-	fmt.Fprintln(os.Stderr, "  -h, --help      help for bumpit")
+	fmt.Fprintln(os.Stderr, "  -h, --help      help for chorekit")
 	fmt.Fprintln(os.Stderr, "  -v, --version   print version and exit")
 	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "Use \"bumpit <command> --help\" for more information about a command.")
+	fmt.Fprintln(os.Stderr, "Use \"chorekit <command> --help\" for more information about a command.")
 }
 
 func buildVersion() string {

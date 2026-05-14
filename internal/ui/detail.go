@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/glamour"
-	"github.com/marcelmettler/bumpit/internal/pkg"
+	"github.com/marcelmettler/chorekit/internal/pkg"
 )
 
 // renderDetail renders the detail view for a single package.

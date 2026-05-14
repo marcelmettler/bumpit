@@ -11,8 +11,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/marcelmettler/bumpit/internal/detect"
-	"github.com/marcelmettler/bumpit/internal/pkg"
+	"github.com/marcelmettler/chorekit/internal/detect"
+	"github.com/marcelmettler/chorekit/internal/pkg"
 )
 
 // importRegex matches ES module imports, CJS require, and dynamic imports of bare package specifiers.

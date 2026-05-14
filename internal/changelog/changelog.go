@@ -1,8 +1,8 @@
 package changelog
 
 import (
-	"github.com/marcelmettler/bumpit/internal/pkg"
-	"github.com/marcelmettler/bumpit/internal/registry"
+	"github.com/marcelmettler/chorekit/internal/pkg"
+	"github.com/marcelmettler/chorekit/internal/registry"
 )
 
 // Result holds the result of a changelog fetch operation.

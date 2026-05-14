@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/marcelmettler/bumpit/internal/auth"
+	"github.com/marcelmettler/chorekit/internal/auth"
 )
 
 const githubAPIBase = "https://api.github.com"
@@ -36,7 +36,7 @@ func FetchGitHubChangelog(owner, repo, fromVersion, toVersion string) (markdown 
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("User-Agent", "bumpit-cli/1.0")
+	req.Header.Set("User-Agent", "chorekit-cli/1.0")
 	if token := auth.GitHubToken(); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}

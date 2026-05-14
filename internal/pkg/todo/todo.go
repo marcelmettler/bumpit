@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/marcelmettler/bumpit/internal/pkg"
+	"github.com/marcelmettler/chorekit/internal/pkg"
 )
 
 // ScanResult holds all TODO/FIXME/HACK/XXX items found in the project.

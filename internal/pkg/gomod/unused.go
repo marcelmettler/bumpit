@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/marcelmettler/bumpit/internal/detect"
-	"github.com/marcelmettler/bumpit/internal/pkg"
+	"github.com/marcelmettler/chorekit/internal/detect"
+	"github.com/marcelmettler/chorekit/internal/pkg"
 )
 
 // validModulePath matches standard Go module path characters.

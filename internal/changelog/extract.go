@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/marcelmettler/bumpit/internal/pkg"
+	"github.com/marcelmettler/chorekit/internal/pkg"
 )
 
 type sectionKind int

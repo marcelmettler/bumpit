@@ -1,8 +1,8 @@
-# bumpit
+# chorekit
 
-A terminal UI for keeping your monorepo in shape.
+chorekit — a tidy toolkit for keeping your codebase in shape
 
-`bumpit` brings the recurring chores of a healthy codebase — updating dependencies, trimming dead weight, auditing licenses — into a single interactive interface. No browser tabs, no context switching, no scripting one-offs.
+`chorekit` brings the recurring chores of a healthy codebase — updating dependencies, trimming dead weight, auditing licenses — into a single interactive interface. No browser tabs, no context switching, no scripting one-offs.
 
 ```
   Package Updater
@@ -24,21 +24,23 @@ A terminal UI for keeping your monorepo in shape.
 ## Commands
 
 ```bash
-bumpit update [directory]    # interactive outdated-package updater
-bumpit unused [directory]    # find and remove unused direct dependencies
-bumpit license [directory]   # audit dependency licenses
-bumpit clean [directory]     # find and delete generated artifact directories
-bumpit css [directory]       # two-way CSS audit: unused selectors and missing definitions
-bumpit todo [directory]      # list all TODO, FIXME, HACK, and XXX comments
-bumpit i18n [directory]      # two-way translation key audit: unused keys and undefined references
-bumpit env [directory]       # two-way .env.example audit: unused vars and undefined references
+chorekit update [directory]    # interactive outdated-package updater
+chorekit unused [directory]    # find and remove unused direct dependencies
+chorekit license [directory]   # audit dependency licenses
+chorekit clean [directory]     # find and delete generated artifact directories
+chorekit css [directory]       # two-way CSS audit: unused selectors and missing definitions
+chorekit todo [directory]      # list all TODO, FIXME, HACK, and XXX comments
+chorekit i18n [directory]      # two-way translation key audit: unused keys and undefined references
+chorekit env [directory]       # two-way .env.example audit: unused vars and undefined references
+chorekit audit [directory]     # security vulnerability audit with fix availability
+chorekit pin [directory]       # find ^ and ~ version ranges and pin them to exact versions
 ```
 
-All commands default to the current directory. Run `bumpit --help` for a full flag listing.
+All commands default to the current directory. Run `chorekit --help` for a full flag listing.
 
 ## Features
 
-### `bumpit update`
+### `chorekit update`
 
 **Changelog in the terminal.** Opens GitHub releases for the full range between your current and latest version. No browser, no tab switching.
 
@@ -56,7 +58,7 @@ All commands default to the current directory. Run `bumpit --help` for a full fl
 
 **Go modules.** Parses `go list -m -u -json all` output alongside npm packages in a unified list.
 
-### `bumpit unused`
+### `chorekit unused`
 
 **Unused dependency detection.** Scans your source files, scripts, and tool config files to find direct dependencies that are never referenced. Select and remove them interactively. Understands ecosystem-specific patterns so it won't flag build tools, type definitions, or platform packages that are used without being directly imported.
 
@@ -64,7 +66,7 @@ Ecosystem-aware — will not flag:
 - `@types/*` packages when the corresponding package is installed
 - TypeScript, ESLint plugins/configs, Nx plugins, Capacitor platform packages, Vite/jsdom (as vitest peers), Angular build tooling, commitlint configs
 
-### `bumpit license`
+### `chorekit license`
 
 **License audit.** Reads license metadata from locally installed `node_modules` for every direct dependency. Default view shows only packages that need attention, with a plain-English explanation of what each license requires. Press `a` to see all packages.
 
@@ -77,13 +79,13 @@ Ecosystem-aware — will not flag:
 
 Handles SPDX compound expressions: `(MIT OR GPL-3.0-or-later)` is treated as permissive (consumer picks MIT). Filter with `/`, toggle sort between risk-first and alphabetical with `s`.
 
-### `bumpit clean`
+### `chorekit clean`
 
 **Artifact cleanup.** Walks the project tree and finds all generated or installed directories — `node_modules`, `dist`, `.next`, `.turbo`, `coverage`, and more. Shows each with its disk size, sorted biggest-first so the most impactful targets are at the top. Select with space and press `D` to delete.
 
 Finds: `node_modules`, `dist`, `build`, `out`, `storybook-static`, `.next`, `.nuxt`, `.output`, `.angular`, `.svelte-kit`, `.vite`, `.turbo`, `.cache`, `coverage`, `.nyc_output`.
 
-### `bumpit css`
+### `chorekit css`
 
 **Two-way CSS audit.** Checks for problems in both directions:
 
@@ -103,9 +105,9 @@ Scans CSS files: `.css`, `.scss`, `.sass`, `.less`. Scans templates: `.html`, `.
 - SCSS `&` parent selectors (e.g. `&__child`, `&:hover`) are not resolved — classes composed via `&` may appear as unused even if they are referenced.
 - Tailwind utility classes are not tracked. If a Tailwind config is detected, a warning is shown.
 
-Read-only — `bumpit css` reports findings but does not modify any files.
+Read-only — `chorekit css` reports findings but does not modify any files.
 
-### `bumpit todo`
+### `chorekit todo`
 
 **Tech-debt overview.** Scans every source file in the project and lists all `TODO`, `FIXME`, `HACK`, and `XXX` comments in one navigable list, sorted by file and line.
 
@@ -118,7 +120,7 @@ Read-only — `bumpit css` reports findings but does not modify any files.
 
 Scans: `.go`, `.js`, `.ts`, `.jsx`, `.tsx`, `.vue`, `.svelte`, `.css`, `.scss`, `.html`, `.yaml`, `.sh`, and more. Filter with `/` to search by kind, file, or comment text. Read-only.
 
-### `bumpit i18n`
+### `chorekit i18n`
 
 **Two-way translation key audit.** Checks for drift between your locale files and source code in both directions:
 
@@ -139,7 +141,7 @@ The `~` direction surfaces dead translations you can safely delete. The `?` dire
 
 Read-only.
 
-### `bumpit env`
+### `chorekit env`
 
 **Two-way .env.example audit.** Checks for drift between your `.env.example` files and source code in both directions:
 
@@ -163,116 +165,163 @@ The `~` direction surfaces stale env vars you can safely remove. The `?` directi
 - Shell bare `$KEY` references (without `{}`) are not detected — too noisy (`$HOME`, `$PATH`, etc. would produce false positives)
 - Dynamic key construction (`process.env[varName]`) cannot be statically resolved
 
-Read-only — `bumpit env` reports findings but does not modify any files.
+Read-only — `chorekit env` reports findings but does not modify any files.
+
+### `chorekit audit`
+
+**Security vulnerability audit.** Runs `pnpm audit` under the hood and presents the results in a compact, scannable format sorted by severity.
+
+```
+  CRIT  lodash                  <4.17.21  → >=4.17.21  Prototype Pollution
+        CVE-2021-23337  ·  (direct)
+
+  HIGH  tough-cookie            <4.1.3    → no fix      ReDoS
+        CVE-2023-26136  ·  jest > jest-circus > jsdom > tough-cookie
+```
+
+Each vulnerability shows:
+- **Severity badge** — `CRIT` / `HIGH` / `MOD` / `LOW` / `INFO`, color-coded
+- **Vulnerable range** and **patched version** (green) or **no fix** (red) — immediate at a glance
+- **Dependency path** — `(direct)` means `pnpm update <pkg>` fixes it immediately; a chain like `jest > tough-cookie` means the fix depends on a parent package releasing an update
+
+Sorted by severity (critical first), then fixable before unfixable within each level. Filter with `/` by package name, severity, or title. Read-only.
+
+### `chorekit pin`
+
+**Unpinned dependency finder.** Scans every `package.json` in the project for dependencies using `^` or `~` version ranges and lets you pin them to exact versions interactively.
+
+| Column | Example |
+|--------|---------|
+| Current | `^18.2.0` (orange — range) |
+| Pinned | `18.2.0` (green — exact) |
+| Type | `dep` / `devDep` / `peer` / `optional` |
+
+Select with `space`, select all with `a`, then press `p` to write the exact versions back to the relevant `package.json` files. Pinning is done in-place — the file's key order and formatting are preserved; only the `^`/`~` prefix is stripped.
+
+Covers `dependencies`, `devDependencies`, `peerDependencies`, and `optionalDependencies`.
 
 ## Installation
 
-**Download a pre-built binary** from the [releases page](https://github.com/marcelmettler/bumpit/releases/latest):
+**Download a pre-built binary** from the [releases page](https://github.com/marcelmettler/chorekit/releases/latest):
 
 | Platform | File |
 |----------|------|
-| macOS (Apple Silicon) | `bumpit_darwin_arm64.tar.gz` |
-| macOS (Intel) | `bumpit_darwin_amd64.tar.gz` |
-| Linux x86-64 | `bumpit_linux_amd64.tar.gz` |
-| Linux arm64 | `bumpit_linux_arm64.tar.gz` |
-| Windows x86-64 | `bumpit_windows_amd64.zip` |
+| macOS (Apple Silicon) | `chorekit_darwin_arm64.tar.gz` |
+| macOS (Intel) | `chorekit_darwin_amd64.tar.gz` |
+| Linux x86-64 | `chorekit_linux_amd64.tar.gz` |
+| Linux arm64 | `chorekit_linux_arm64.tar.gz` |
+| Windows x86-64 | `chorekit_windows_amd64.zip` |
 
 ```bash
-tar -xzf bumpit_darwin_arm64.tar.gz
-mv bumpit /usr/local/bin/
+tar -xzf chorekit_darwin_arm64.tar.gz
+mv chorekit /usr/local/bin/
 ```
 
 **Or install with Go:**
 
 ```bash
-go install github.com/marcelmettler/bumpit@latest
+go install github.com/marcelmettler/chorekit@latest
 ```
 
 **Or build from source:**
 
 ```bash
-git clone https://github.com/marcelmettler/bumpit
-cd bumpit
-go build -o bumpit .
+git clone https://github.com/marcelmettler/chorekit
+cd chorekit
+go build -o chorekit .
 ```
 
 Requires Go 1.22+. For npm packages, `pnpm` must be available in your PATH.
 
 ## Usage
 
-### `bumpit update`
+### `chorekit update`
 
 ```bash
-bumpit update
-bumpit update /path/to/project
-bumpit update --show-indirect   # include indirect Go module dependencies
+chorekit update
+chorekit update /path/to/project
+chorekit update --show-indirect   # include indirect Go module dependencies
 ```
 
-### `bumpit unused`
+### `chorekit unused`
 
 ```bash
-bumpit unused
-bumpit unused /path/to/project
+chorekit unused
+chorekit unused /path/to/project
 ```
 
-### `bumpit license`
+### `chorekit license`
 
 ```bash
-bumpit license
-bumpit license /path/to/project
+chorekit license
+chorekit license /path/to/project
 ```
 
 Reads license data from local `node_modules`. Run after `pnpm install` for accurate results. Packages that are listed in `package.json` but not yet installed are shown with a `?` indicator.
 
-### `bumpit clean`
+### `chorekit clean`
 
 ```bash
-bumpit clean
-bumpit clean /path/to/project
+chorekit clean
+chorekit clean /path/to/project
 ```
 
-### `bumpit css`
+### `chorekit css`
 
 ```bash
-bumpit css
-bumpit css /path/to/project
+chorekit css
+chorekit css /path/to/project
 ```
 
-### `bumpit todo`
+### `chorekit todo`
 
 ```bash
-bumpit todo
-bumpit todo /path/to/project
+chorekit todo
+chorekit todo /path/to/project
 ```
 
-### `bumpit i18n`
+### `chorekit i18n`
 
 ```bash
-bumpit i18n
-bumpit i18n /path/to/project
+chorekit i18n
+chorekit i18n /path/to/project
 ```
 
-### `bumpit env`
+### `chorekit env`
 
 ```bash
-bumpit env
-bumpit env /path/to/project
+chorekit env
+chorekit env /path/to/project
+```
+
+### `chorekit audit`
+
+```bash
+chorekit audit
+chorekit audit /path/to/project
+```
+
+### `chorekit pin`
+
+```bash
+chorekit pin
+chorekit pin /path/to/project
 ```
 
 ### GitHub authentication
 
-Changelogs are fetched from the GitHub API. Unauthenticated requests are limited to 60 per hour. `bumpit` automatically resolves credentials from your existing machine state — no setup required if you already use the GitHub CLI or have git configured with HTTPS:
+Changelogs are fetched from the GitHub API. Unauthenticated requests are limited to 60 per hour. `chorekit` automatically resolves credentials from your existing machine state — no setup required if you already use the GitHub CLI or have git configured with HTTPS:
 
 1. `GITHUB_TOKEN` env var
 2. `GH_TOKEN` env var
 3. `gh auth token` — GitHub CLI credential store
 4. `git credential fill` — system keychain (macOS Keychain, libsecret, etc.)
 
-If none of the above are available, `bumpit` falls back to unauthenticated requests. For larger projects or private repos you can always set a token explicitly:
+If none of the above are available, `chorekit` falls back to unauthenticated requests. For larger projects or private repos you can always set a token explicitly:
 
 ```bash
 export GITHUB_TOKEN=ghp_...
-bumpit
+chorekit
 ```
 
 ### `minimumReleaseAge`
@@ -288,7 +337,7 @@ Packages published less than 3 days ago will show `⏳ Nd left` instead of a sta
 
 ## How it works
 
-### `bumpit update`
+### `chorekit update`
 
 1. **Detect** — walks the directory tree to find `package.json` and `go.mod` files
 2. **Fetch outdated** — runs `pnpm outdated --json` or `go list -m -u -json all` per directory
@@ -297,7 +346,7 @@ Packages published less than 3 days ago will show `⏳ Nd left` instead of a sta
 5. **Audit** — runs `pnpm audit --json` in the background and annotates vulnerable packages
 6. **Update** — runs `pnpm update --latest <pkg...>` grouped by directory for monorepo correctness
 
-### `bumpit unused`
+### `chorekit unused`
 
 1. **Detect** — same file discovery as `update`
 2. **Scan imports** — walks all `.js/.ts/.jsx/.tsx/.mjs/.cjs/.vue/.svelte` source files across the entire workspace root collecting `import`/`require` references
@@ -306,7 +355,7 @@ Packages published less than 3 days ago will show `⏳ Nd left` instead of a sta
 5. **Ecosystem rules** — applies per-ecosystem knowledge to skip packages that are used without being imported (build tools, type stubs, platform packages)
 6. **Remove** — runs `pnpm remove <pkg...>` or `go get mod@none && go mod tidy` for selected packages
 
-### `bumpit license`
+### `chorekit license`
 
 1. **Detect** — same file discovery as `update`
 2. **Read** — for each direct dependency in each `package.json`, reads the installed `node_modules/<pkg>/package.json` (checks package-local then workspace-root for hoisted deps)
@@ -314,39 +363,53 @@ Packages published less than 3 days ago will show `⏳ Nd left` instead of a sta
 4. **Deduplicate** — packages that appear in multiple `package.json` files across a monorepo are shown once
 5. **Display** — default view shows only packages needing attention with plain-English action text; press `a` for the full list
 
-### `bumpit clean`
+### `chorekit clean`
 
 1. **Scan** — walks the directory tree; when a directory with a known artifact name is found, records it and skips descending into it (so nested `node_modules` inside `node_modules` are not double-counted)
 2. **Size** — computes total disk usage for each artifact directory
 3. **Sort** — biggest directories first, so the most impactful targets are immediately visible
 4. **Delete** — `D` runs `os.RemoveAll` on selected directories and reports total space freed
 
-### `bumpit css`
+### `chorekit css`
 
 1. **Pass 1 (define)** — walks all `.css`/`.scss`/`.sass`/`.less` files, strips comments and `url()` references, extracts every `.classname` selector. Skips `.module.css` files and lines containing `&`.
 2. **Pass 2 (reference)** — walks all template and source files; builds two sets: `broad` (class attrs + string literals, for the `~` direction) and `explicit` (class attrs only with file/line, for the `?` direction). String literals are excluded from `explicit` to avoid false positives from common English words.
 3. **Diff both ways** — `~` = defined in CSS but absent from `broad`; `?` = present in `explicit` but absent from CSS definitions
 4. **Display** — combined scrollable list sorted within each direction by file then line; `/` to filter by name or file
 
-### `bumpit todo`
+### `chorekit todo`
 
 1. **Scan** — walks all source files matching a broad extension list (`.go`, `.js`/`.ts`, `.vue`, `.svelte`, `.css`/`.scss`, `.html`, `.yaml`, `.sh`, and more); skips `node_modules`, `dist`, `.git`, and other artifact directories
 2. **Match** — per line, applies `\b(TODO|FIXME|HACK|XXX)\b` regex; captures the text following the keyword, strips trailing comment closers (`*/`, `-->`) and `TODO(author):` prefixes
 3. **Display** — read-only list sorted by file then line; color-coded by kind (`TODO` blue, `FIXME`/`HACK` orange, `XXX` red); `/` filters by kind, text, or file
 
-### `bumpit i18n`
+### `chorekit i18n`
 
 1. **Locale scan** — walks all JSON files inside `locales/`, `i18n/`, `translations/`, `lang/` directories; parses each with `encoding/json` and recursively flattens nested objects to dot-notation keys; deduplicates across multiple locale files
 2. **Source scan** — walks `.js`/`.ts`/`.jsx`/`.tsx`/`.vue`/`.svelte`/`.html` files line by line; applies two patterns: `\$t|i18n\.t|translate` (explicit) and `[^a-zA-Z_$\d]t\s*\(` (bare `t()`) for broad coverage
 3. **Diff both ways** — `~` = defined in locale but not in source refs; `?` = in source refs but absent from all locale files
 4. **Display** — combined scrollable list (unused first, then undefined); `/` filters by key or file
 
-### `bumpit env`
+### `chorekit env`
 
 1. **Env file scan** — walks all `.env.example`, `.env.sample`, `.env.template`, `.env.defaults`, and `.env.schema` files; parses each line with `^(?:export\s+)?KEY=` regex; skips comments and blank lines
 2. **Source scan** — walks `.js`/`.ts`/`.go`/`.py`/`.sh`/`.yaml` and related files; applies patterns for `process.env.KEY`, `import.meta.env.KEY`, `os.Getenv("KEY")`, `os.environ["KEY"]`, and `${KEY}` YAML substitution
 3. **Diff both ways** — `~` = declared in `.env.example` but no matching access in source; `?` = accessed in source but absent from all env files
 4. **Display** — combined scrollable list (unused first, then undefined); `/` filters by variable name or file
+
+### `chorekit audit`
+
+1. **Run** — executes `pnpm audit --json` from the project root; `pnpm audit` exits non-zero when vulnerabilities are found, which is treated as success (not an error)
+2. **Parse** — deserialises the `advisories` map; for each advisory, collects all `findings[*].paths` into a deduplicated path list and records the installed version from the first finding
+3. **Fixability** — `patched_versions` values of `""`, `"<0.0.0"`, or `"<0.0.0-0"` are treated as "no fix available"; any other value means a patch exists. `IsDirect` is set when any path contains no `>` separator
+4. **Sort** — critical → high → moderate → low → info; within each severity, fixable entries appear before unfixable; then alphabetical by package name
+5. **Display** — two-line compact format: severity badge, package, vulnerable range, patched range (green) or "no fix" (red), title on line 1; CVEs and shortest dependency path on line 2; `/` filters by name, severity, or title
+
+### `chorekit pin`
+
+1. **Scan** — walks all `package.json` files (skipping `node_modules`, `dist`, etc.); for each of the four dependency sections (`dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`), records every entry whose version starts with `^` or `~`
+2. **Display** — scrollable list showing current range (orange), exact pinned version (green), dep type, and workspace dir; select with `space`, `a` to toggle all
+3. **Pin** — for selected deps, reads each `package.json` as raw bytes, replaces `"name": "^x.y.z"` → `"name": "x.y.z"` in-place using targeted string substitution to preserve file formatting and key order, then writes back
 
 ## Status indicators
 
@@ -370,16 +433,16 @@ Packages published less than 3 days ago will show `⏳ Nd left` instead of a sta
 Bug reports and pull requests are welcome. For significant changes, open an issue first to discuss the approach.
 
 ```bash
-git clone https://github.com/marcelmettler/bumpit
-cd bumpit
-go build -o bumpit .
+git clone https://github.com/marcelmettler/chorekit
+cd chorekit
+go build -o chorekit .
 go test ./...
 ```
 
-Set `BUMPIT_DEBUG=1` to write a trace log to `/tmp/bumpit-debug.log`:
+Set `CHOREKIT_DEBUG=1` to write a trace log to `/tmp/chorekit-debug.log`:
 
 ```bash
-BUMPIT_DEBUG=1 bumpit update
+CHOREKIT_DEBUG=1 chorekit update
 ```
 
 ## License
