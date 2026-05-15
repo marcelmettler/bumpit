@@ -34,6 +34,7 @@ chorekit i18n [directory]      # two-way translation key audit: unused keys and 
 chorekit env [directory]       # two-way .env.example audit: unused vars and undefined references
 chorekit audit [directory]     # security vulnerability audit with fix availability
 chorekit pin [directory]       # find ^ and ~ version ranges and pin them to exact versions
+chorekit sort [directory]      # sort dependency sections in package.json files alphabetically
 ```
 
 All commands default to the current directory. Run `chorekit --help` for a full flag listing.
@@ -197,6 +198,16 @@ Sorted by severity (critical first), then fixable before unfixable within each l
 | Type | `dep` / `devDep` / `peer` / `optional` |
 
 Select with `space`, select all with `a`, then press `p` to write the exact versions back to the relevant `package.json` files. Pinning is done in-place — the file's key order and formatting are preserved; only the `^`/`~` prefix is stripped.
+
+Covers `dependencies`, `devDependencies`, `peerDependencies`, and `optionalDependencies`.
+
+### `chorekit sort`
+
+**Dependency sorter.** Scans every `package.json` in the project for dependency sections whose keys are not sorted alphabetically, then sorts them interactively.
+
+All files are pre-selected — sorting is non-destructive and safe to apply in bulk. Select with `space`, select all with `a`, then press `s` to write the sorted sections back.
+
+Sorting is done in-place: only the affected dependency objects are rewritten. The rest of the file — `name`, `version`, `scripts`, and all other keys — is left exactly as-is, including indentation and key order.
 
 Covers `dependencies`, `devDependencies`, `peerDependencies`, and `optionalDependencies`.
 

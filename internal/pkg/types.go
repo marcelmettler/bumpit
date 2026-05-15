@@ -221,6 +221,15 @@ type UnpinnedDep struct {
 	Selected bool
 }
 
+// SortableFile represents a package.json file that has unsorted dependency sections.
+type SortableFile struct {
+	File     string   // relative path
+	Dir      string   // absolute dir path
+	DirName  string
+	Sections []string // dependency sections that are not alphabetically sorted
+	Selected bool
+}
+
 // TodoItem represents a TODO/FIXME/HACK/XXX comment found in source code.
 type TodoItem struct {
 	Kind string // "TODO", "FIXME", "HACK", "XXX"

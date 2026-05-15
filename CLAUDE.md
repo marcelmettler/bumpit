@@ -25,6 +25,7 @@ go test ./internal/ui/... -run TestDetailEsc   # single test
 ./chorekit env [directory]
 ./chorekit audit [directory]
 ./chorekit pin [directory]
+./chorekit sort [directory]
 CHOREKIT_DEBUG=1 ./chorekit update    # enables debug log at /tmp/chorekit-debug.log
 
 # Version / help
@@ -47,8 +48,9 @@ CHOREKIT_DEBUG=1 ./chorekit update    # enables debug log at /tmp/chorekit-debug
 - `env` path: `stateLoading → stateEnvList` (bypasses `cmdDetect` — starts env file + source scan directly from `Init()`)
 - `audit` path: `stateLoading → stateAuditList` (bypasses `cmdDetect` — runs `pnpm audit --json` directly from `Init()`)
 - `pin` path: `stateLoading → statePinList → statePinning → statePinDone` (bypasses `cmdDetect` — walks package.json files directly from `Init()`)
+- `sort` path: `stateLoading → stateSortList → stateSorting → stateSortDone` (bypasses `cmdDetect` — walks package.json files directly from `Init()`)
 
-`Update()` dispatches key events through `handleKey()` → `updateList()` / `updateDetail()` / `updateUnusedList()` / `updateLicenseList()` / `updateCleanList()` / `updateCSSList()` / `updateTodoList()` / `updateI18nList()` / `updateEnvList()` / `updateAuditList()` / `updatePinList()`. The active path is determined by the mode flag on `Model` (`unusedMode` / `licenseMode` / `cleanMode` / `cssMode` / `todoMode` / `i18nMode` / `envMode` / `auditMode` / `pinMode`), set from `Config`.
+`Update()` dispatches key events through `handleKey()` → `updateList()` / `updateDetail()` / `updateUnusedList()` / `updateLicenseList()` / `updateCleanList()` / `updateCSSList()` / `updateTodoList()` / `updateI18nList()` / `updateEnvList()` / `updateAuditList()` / `updatePinList()` / `updateSortList()`. The active path is determined by the mode flag on `Model` (`unusedMode` / `licenseMode` / `cleanMode` / `cssMode` / `todoMode` / `i18nMode` / `envMode` / `auditMode` / `pinMode` / `sortDepsMode`), set from `Config`.
 
 **Data flow — `update`**:
 1. `cmdDetect()` → `detect.Find()` discovers `pnpm-lock.yaml` and `go.mod` files
@@ -96,9 +98,9 @@ CHOREKIT_DEBUG=1 ./chorekit update    # enables debug log at /tmp/chorekit-debug
 4. Results sorted by file then line; `rebuildTodoFiltered()` applies the filter query across kind, text, and file path
 
 **Package layout**:
-- `internal/ui/` — all BubblaTea code: `model.go` (state machine), `list.go` (update list view), `detail.go` (changelog detail), `unused.go` (unused list view + remove summary), `license.go` (license audit view), `clean.go` (clean workspace view), `css.go` (CSS unused-class view), `todo.go` (TODO audit view), `i18n.go` (i18n key audit view), `env.go` (env var audit view), `audit.go` (security audit view), `pin.go` (unpinned deps view), `loading.go` (indeterminate progress bar), `styles.go` (lipgloss styles), `debug.go` (gated debug log)
+- `internal/ui/` — all BubblaTea code: `model.go` (state machine), `list.go` (update list view), `detail.go` (changelog detail), `unused.go` (unused list view + remove summary), `license.go` (license audit view), `clean.go` (clean workspace view), `css.go` (CSS unused-class view), `todo.go` (TODO audit view), `i18n.go` (i18n key audit view), `env.go` (env var audit view), `audit.go` (security audit view), `pin.go` (unpinned deps view), `depsort.go` (dependency sorter view), `loading.go` (indeterminate progress bar), `styles.go` (lipgloss styles), `debug.go` (gated debug log)
 - `internal/detect/` — finds `pnpm-lock.yaml` and `go.mod` files
-- `internal/pkg/` — shared structs (`PackageUpdate`, `UnusedPackage`, `LicenseInfo`, `LicenseCategory`, `ArtifactDir`, `CSSClass`, `TodoItem`, `I18nKey`, `EnvVar`, `Vuln`, `AuditResult`, `UnpinnedDep`); `pnpm/`, `gomod/`, `clean/`, `css/`, `todo/`, `i18n/`, `env/`, and `pin/` subdirs for each domain
+- `internal/pkg/` — shared structs (`PackageUpdate`, `UnusedPackage`, `LicenseInfo`, `LicenseCategory`, `ArtifactDir`, `CSSClass`, `TodoItem`, `I18nKey`, `EnvVar`, `Vuln`, `AuditResult`, `UnpinnedDep`, `SortableFile`); `pnpm/`, `gomod/`, `clean/`, `css/`, `todo/`, `i18n/`, `env/`, `pin/`, and `depsort/` subdirs for each domain
 - `internal/changelog/` — `github.go` fetches GitHub releases/CHANGELOG; `changelog.go` orchestrates; `extract.go` parses markdown into `Highlights`
 - `internal/registry/` — npm registry API for publish date and repo URL
 
@@ -131,6 +133,8 @@ CHOREKIT_DEBUG=1 ./chorekit update    # enables debug log at /tmp/chorekit-debug
 **Security audit** (`internal/pkg/pnpm/audit.go`): `Audit(dir)` runs `pnpm audit --json`, ignores the non-zero exit code (pnpm exits 1 when vulns are found), and unmarshals the `advisories` map into `[]pkg.Vuln`. Each advisory's `findings[*].paths` are deduplicated into `Vuln.Paths`; `IsDirect` is set when any path contains no `>`. Fixability: `PatchedVersions` values `""`, `"<0.0.0"`, and `"<0.0.0-0"` mean no fix; anything else is fixable. Sorted critical-first, fixable-before-unfixable within severity. `internal/ui/audit.go` renders a two-line-per-item list (severity badge + ranges + title on line 1; CVEs + shortest path on line 2); filter searches name, severity, and title.
 
 **Unpinned dep scanning** (`internal/pkg/pin/pin.go`): `Scan(root)` walks all `package.json` files, checks all four dependency sections for `^`/`~` prefixes, and returns `[]pkg.UnpinnedDep` with both the raw spec (`Version`) and the stripped exact version (`Pinned`). `Pin(root, deps)` groups selected deps by file, reads each file as raw bytes, replaces `"name": "^x.y.z"` → `"name": "x.y.z"` using `bytes.ReplaceAll` on the exact JSON key-value string, and writes back — preserving key order and formatting. `DirName` derived from `dirLabel()` using last path component relative to root.
+
+**Dependency sorting** (`internal/pkg/depsort/depsort.go`): `Scan(root)` walks all `package.json` files, parses each as `map[string]json.RawMessage`, and for each of the four dep sections uses a streaming `json.Decoder` (`keysInOrder()`) to read keys in document order — then checks `sort.StringsAreSorted`. Returns `[]*pkg.SortableFile` (pre-selected) for files with at least one unsorted section. `Sort(root, files)` reads each file, reconstructs the unsorted sections with `buildSortedSection()` — which sorts keys, detects the file's indentation from the raw bytes via `detectIndents()`, and rebuilds the JSON object — then `bytes.Replace`s the old raw section with the sorted one in-place. Non-dep keys and file formatting are untouched.
 
 **CSS class scanning** (`internal/pkg/css/css.go`): `Scan(root)` performs two `filepath.WalkDir` passes. Pass 1 extracts CSS class definitions. Pass 2 calls `extractClassRefs(content, relPath)` which returns two maps: `broad` (class attrs + string literals, used for `ScanResult.Unused`) and `explicit` (class attrs only with file/line, used for `ScanResult.Undefined`). String literals are excluded from `explicit` to avoid false positives — common English words would otherwise appear as missing CSS definitions. `.module.css` files and lines containing `&` are skipped. `detectTailwind()` checks for tailwind config files at root. The UI merges both result sets into `[]cssItem` with an `undefined bool` flag; `~` = unused, `?` = undefined.
 

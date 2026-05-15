@@ -14,7 +14,8 @@ import (
 	csspkg   "github.com/marcelmettler/chorekit/internal/pkg/css"
 	envpkg   "github.com/marcelmettler/chorekit/internal/pkg/env"
 	i18npkg  "github.com/marcelmettler/chorekit/internal/pkg/i18n"
-	pinpkg   "github.com/marcelmettler/chorekit/internal/pkg/pin"
+	pinpkg      "github.com/marcelmettler/chorekit/internal/pkg/pin"
+	depsorpkg   "github.com/marcelmettler/chorekit/internal/pkg/depsort"
 	todopkg  "github.com/marcelmettler/chorekit/internal/pkg/todo"
 	"github.com/marcelmettler/chorekit/internal/pkg/gomod"
 	"github.com/marcelmettler/chorekit/internal/pkg/pnpm"
@@ -47,6 +48,9 @@ const (
 	statePinList                     // unpinned dependency audit
 	statePinning                     // writing exact versions to package.json
 	statePinDone                     // pin complete
+	stateSortList                    // dependency sort audit
+	stateSorting                     // writing sorted sections to package.json
+	stateSortDone                    // sort complete
 )
 
 // SortMode defines available sort orders.
@@ -170,6 +174,17 @@ type msgPinDone struct {
 	err    error
 }
 
+type msgSortScanDone struct {
+	files []*pkg.SortableFile
+	err   error
+}
+
+type msgSortDone struct {
+	count  int
+	sorted []*pkg.SortableFile
+	err    error
+}
+
 // ── Model ─────────────────────────────────────────────────────────────────────
 
 // Config holds startup options passed from the CLI.
@@ -184,6 +199,7 @@ type Config struct {
 	EnvMode      bool // audit .env.example variables
 	AuditMode    bool // security vulnerability audit
 	PinMode      bool // find and pin unpinned dependencies
+	SortDepsMode bool // sort dependency sections alphabetically
 }
 
 // Model is the bubbletea model for the entire application.
@@ -205,6 +221,7 @@ type Model struct {
 	envMode      bool
 	auditMode    bool
 	pinMode      bool
+	sortDepsMode bool
 
 	// Spinner
 	spinnerFrame int
@@ -312,6 +329,12 @@ type Model struct {
 	pinCursor  int
 	pinScroll  int
 	pinnedDeps []*pkg.UnpinnedDep
+
+	// sort deps mode
+	sortFiles  []*pkg.SortableFile
+	sortCursor int
+	sortScroll int
+	sortedFiles []*pkg.SortableFile
 }
 
 // New creates a new Model for the given root directory.
@@ -329,6 +352,7 @@ func New(root string, cfg Config) *Model {
 		envMode:               cfg.EnvMode,
 		auditMode:             cfg.AuditMode,
 		pinMode:               cfg.PinMode,
+		sortDepsMode:          cfg.SortDepsMode,
 		state:                 stateInit,
 		minimumReleaseAge:     3 * 24 * time.Hour,
 		changelogFetchedNames: make(map[string]bool),
@@ -340,7 +364,7 @@ func tickCmd() tea.Cmd {
 }
 
 func isLoadingState(s appState) bool {
-	return s == stateInit || s == stateLoading || s == stateUpdating || s == stateRemoving || s == stateCleanDeleting || s == statePinning
+	return s == stateInit || s == stateLoading || s == stateUpdating || s == stateRemoving || s == stateCleanDeleting || s == statePinning || s == stateSorting
 }
 
 // Init starts the detection phase.
@@ -374,6 +398,11 @@ func (m *Model) Init() tea.Cmd {
 		m.state = stateLoading
 		m.statusMsg = "Scanning package.json files for unpinned dependencies..."
 		return tea.Batch(m.cmdScanPin(), tickCmd())
+	}
+	if m.sortDepsMode {
+		m.state = stateLoading
+		m.statusMsg = "Scanning package.json files for unsorted dependencies..."
+		return tea.Batch(m.cmdScanSort(), tickCmd())
 	}
 	return tea.Batch(m.cmdDetect(), tickCmd())
 }
@@ -780,6 +809,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case msgSortScanDone:
+		if msg.err != nil {
+			m.state = stateError
+			m.err = msg.err
+			return m, nil
+		}
+		m.sortFiles = msg.files
+		m.state = stateSortList
+		return m, nil
+
+	case msgSortDone:
+		m.sortedFiles = msg.sorted
+		if msg.err != nil {
+			m.state = stateError
+			m.err = msg.err
+		} else {
+			m.state = stateSortDone
+		}
+		return m, nil
+
 	case msgTick:
 		m.spinnerFrame++
 		if isLoadingState(m.state) {
@@ -829,6 +878,10 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case statePinList:
 		return m.updatePinList(msg)
 	case statePinDone:
+		return m, tea.Quit
+	case stateSortList:
+		return m.updateSortList(msg)
+	case stateSortDone:
 		return m, tea.Quit
 	}
 	return m, nil
@@ -1065,6 +1118,15 @@ func (m *Model) View() string {
 
 	case statePinDone:
 		return renderPinDone(len(m.pinnedDeps), m.pinnedDeps)
+
+	case stateSortList:
+		return renderSortList(m)
+
+	case stateSorting:
+		return renderLoadingScreen(m, spin+"  Sorting dependency sections...")
+
+	case stateSortDone:
+		return renderSortDone(len(m.sortedFiles), m.sortedFiles)
 
 	case stateRemoving:
 		return renderLoadingScreen(m, spin+"  Removing packages...")
@@ -1738,6 +1800,70 @@ func selectedPinDeps(deps []*pkg.UnpinnedDep) []*pkg.UnpinnedDep {
 	for _, d := range deps {
 		if d.Selected {
 			sel = append(sel, d)
+		}
+	}
+	return sel
+}
+
+func (m *Model) cmdScanSort() tea.Cmd {
+	return func() tea.Msg {
+		files, err := depsorpkg.Scan(m.root)
+		return msgSortScanDone{files: files, err: err}
+	}
+}
+
+func (m *Model) cmdRunSort(files []*pkg.SortableFile) tea.Cmd {
+	return func() tea.Msg {
+		count, err := depsorpkg.Sort(m.root, files)
+		return msgSortDone{count: count, sorted: files, err: err}
+	}
+}
+
+func (m *Model) updateSortList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.statusMsg = ""
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "j", "down":
+		if m.sortCursor < len(m.sortFiles)-1 {
+			m.sortCursor++
+		}
+	case "k", "up":
+		if m.sortCursor > 0 {
+			m.sortCursor--
+		}
+	case " ":
+		if len(m.sortFiles) > 0 {
+			m.sortFiles[m.sortCursor].Selected = !m.sortFiles[m.sortCursor].Selected
+		}
+	case "a":
+		allSelected := true
+		for _, f := range m.sortFiles {
+			if !f.Selected {
+				allSelected = false
+				break
+			}
+		}
+		for _, f := range m.sortFiles {
+			f.Selected = !allSelected
+		}
+	case "s":
+		selected := selectedSortFiles(m.sortFiles)
+		if len(selected) == 0 {
+			m.statusMsg = "No files selected. Press SPACE to select."
+		} else {
+			m.state = stateSorting
+			return m, m.cmdRunSort(selected)
+		}
+	}
+	return m, nil
+}
+
+func selectedSortFiles(files []*pkg.SortableFile) []*pkg.SortableFile {
+	var sel []*pkg.SortableFile
+	for _, f := range files {
+		if f.Selected {
+			sel = append(sel, f)
 		}
 	}
 	return sel

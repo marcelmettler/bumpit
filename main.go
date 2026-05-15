@@ -37,6 +37,8 @@ func main() {
 		runAudit(os.Args[2:])
 	case "pin":
 		runPin(os.Args[2:])
+	case "sort":
+		runSort(os.Args[2:])
 	case "-v", "--version", "version":
 		fmt.Println("chorekit", buildVersion())
 	case "-h", "--help", "help":
@@ -189,6 +191,23 @@ func runCSS(args []string) {
 	runTUI(ui.New(rootDir(fs.Args()), ui.Config{CSSMode: true}))
 }
 
+func runSort(args []string) {
+	fs := flag.NewFlagSet("sort", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Sort dependency sections in package.json files alphabetically")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage:")
+		fmt.Fprintln(os.Stderr, "  chorekit sort [directory]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Sorts dependencies, devDependencies, peerDependencies, and optionalDependencies.")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fmt.Fprintln(os.Stderr, "  -h, --help   help for sort")
+	}
+	_ = fs.Parse(args)
+	runTUI(ui.New(rootDir(fs.Args()), ui.Config{SortDepsMode: true}))
+}
+
 func runClean(args []string) {
 	fs := flag.NewFlagSet("clean", flag.ExitOnError)
 	fs.Usage = func() {
@@ -241,6 +260,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  env        Audit .env.example vars: unused vars and undefined source references")
 	fmt.Fprintln(os.Stderr, "  audit      Run security audit and show vulnerabilities with fix availability")
 	fmt.Fprintln(os.Stderr, "  pin        Find ^ and ~ version ranges and pin them to exact versions")
+	fmt.Fprintln(os.Stderr, "  sort       Sort dependency sections in package.json files alphabetically")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Flags:")
 	fmt.Fprintln(os.Stderr, "  -h, --help      help for chorekit")
